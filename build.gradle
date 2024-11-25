@@ -30,7 +30,7 @@ ext {
     // Dependency versions
     junitVersion = '4.13.1'
     lombokVersion = '1.18.20'
-    leveldbVersion = '1.0.0'
+    leveldbVersion = '1.0.1'
     porklibVersion = '0.5.5-SNAPSHOT'
     snappyVersion = '0.5'
 }
@@ -43,11 +43,19 @@ java {
     targetCompatibility = JavaVersion.VERSION_11
 }
 
-tasks.withType(JavaCompile) {
+tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
 repositories {
+    maven {
+        name = 'MemoriesOfTime'
+        url = 'https://repo.lanink.cn/repository/maven-public/'
+    }
+    maven {
+        name = 'DaPorkchop_'
+        url = 'https://maven.daporkchop.net/'
+    }
     maven {
         name = 'DaPorkchop_'
         url = 'https://maven.daporkchop.net/'
@@ -80,25 +88,14 @@ tasks.register('sourceJar', Jar) {
 
 publishing {
     repositories {
-        if (project.hasProperty('nukkitxMavenUsername') && project.hasProperty('nukkitxMavenPassword')) {
-            maven {
-                credentials {
-                    username = project.nukkitxMavenUsername
-                    password = project.nukkitxMavenPassword
-                }
-                name = 'NukkitX'
-                url = version.endsWith('SNAPSHOT') ? 'https://repo.nukkitx.com/snapshot' : 'https://repo.nukkitx.com/release'
+        if (MOT_MAVEN_USERNAME != null && MOT_MAVEN_PASSWORD != null)
+        maven {
+            credentials {
+                username = MOT_MAVEN_USERNAME
+                password = MOT_MAVEN_PASSWORD
             }
-        }
-        if (project.hasProperty('daporkchopMavenUsername') && project.hasProperty('daporkchopMavenPassword')) {
-            maven {
-                credentials {
-                    username = project.daporkchopMavenUsername
-                    password = project.daporkchopMavenPassword
-                }
-                name = 'DaPorkchop_'
-                url = version.endsWith('SNAPSHOT') ? 'https://maven.daporkchop.net/snapshot/' : 'https://maven.daporkchop.net/release/'
-            }
+            name = 'repo-lanink-cn'
+            url = version.endsWith('SNAPSHOT') ? 'https://repo.lanink.cn/repository/maven-snapshots/' : 'https://repo.lanink.cn/repository/maven-releases/'
         }
     }
 
