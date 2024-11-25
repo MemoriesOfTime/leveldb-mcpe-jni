@@ -36,7 +36,17 @@ import static net.daporkchop.ldbjni.java.JavaDirectDBWrapper.toArray;
 @RequiredArgsConstructor
 final class JavaDirectWriteBatchWrapper implements DirectWriteBatch {
     @NonNull
-    protected final WriteBatch delegate;
+    final WriteBatch delegate;
+
+    @Override
+    public int getApproximateSize() {
+        return this.delegate.size();
+    }
+
+    @Override
+    public int size() {
+        return this.delegate.size();
+    }
 
     @Override
     public DirectWriteBatch put(@NonNull byte[] key, @NonNull byte[] value) {

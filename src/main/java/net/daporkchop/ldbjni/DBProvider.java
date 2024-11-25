@@ -23,7 +23,6 @@ package net.daporkchop.ldbjni;
 import lombok.NonNull;
 import net.daporkchop.ldbjni.direct.DirectDB;
 import net.daporkchop.lib.natives.Feature;
-import org.iq80.leveldb.DB;
 import org.iq80.leveldb.DBFactory;
 import org.iq80.leveldb.Options;
 
