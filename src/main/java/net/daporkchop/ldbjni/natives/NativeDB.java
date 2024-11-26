@@ -26,12 +26,14 @@ import io.netty.buffer.Unpooled;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.buffer.UnpooledUnsafeDirectByteBuf;
 import io.netty.util.internal.PlatformDependent;
+import io.netty.util.internal.shaded.org.jctools.util.PortableJvmInfo;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import net.daporkchop.ldbjni.direct.BufType;
 import net.daporkchop.ldbjni.direct.DirectDB;
 import net.daporkchop.ldbjni.direct.DirectReadOptions;
 import net.daporkchop.ldbjni.direct.DirectWriteBatch;
+import net.daporkchop.lib.common.system.PlatformInfo;
 import net.daporkchop.lib.unsafe.PCleaner;
 import net.daporkchop.lib.unsafe.PUnsafe;
 import org.iq80.leveldb.DBException;
@@ -324,8 +326,8 @@ final class NativeDB implements DirectDB {
 
     private native ByteBuf get0D(long keyAddr, int keyLen, boolean verifyChecksums, boolean fillCache, long snapshot, ByteBufAllocator alloc, BufType type);
 
-    private ByteBuf get0_final(long valueAddr, int valueLen, @NonNull ByteBufAllocator alloc, @NonNull BufType type) {
-        return type.allocate(alloc, valueLen).writeBytes(Unpooled.wrappedBuffer(valueAddr, valueLen, false));
+    private ByteBuf get0_final(byte[] value, @NonNull ByteBufAllocator alloc, @NonNull BufType type) {
+        return type.allocate(alloc, value.length).writeBytes(value);
     }
 
     @Override
@@ -365,8 +367,8 @@ final class NativeDB implements DirectDB {
 
     private native boolean getInto0D(long keyAddr, int keyLen, boolean verifyChecksums, boolean fillCache, long snapshot, ByteBuf dst);
 
-    private void getInto0_final(long valueAddr, int valueLen, @NonNull ByteBuf dst) {
-        dst.writeBytes(Unpooled.wrappedBuffer(valueAddr, valueLen, false));
+    private void getInto0_final(byte[] value, @NonNull ByteBuf dst) {
+        dst.writeBytes(value);
     }
 
     @Override
@@ -376,6 +378,11 @@ final class NativeDB implements DirectDB {
 
     @Override
     public ByteBuf getZeroCopy(@NonNull ByteBuf key, @NonNull ReadOptions options) throws DBException {
+        //jdk9+限制了反射，暂时调用get方法
+        if (PlatformInfo.JAVA_VERSION > 8) {
+            return get(key, options);
+        }
+
         this.readLock.lock();
         try {
             this.assertOpen(); //TODO: snapshot

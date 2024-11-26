@@ -31,7 +31,8 @@ ext {
     junitVersion = '4.13.1'
     lombokVersion = '1.18.20'
     leveldbVersion = '1.0.1'
-    porklibVersion = '0.5.5-SNAPSHOT'
+    nettyVersion= '4.1.101.Final'
+    porklibVersion = '0.5.8-SNAPSHOT'
     snappyVersion = '0.5'
 }
 
@@ -57,10 +58,6 @@ repositories {
         url = 'https://maven.daporkchop.net/'
     }
     maven {
-        name = 'DaPorkchop_'
-        url = 'https://maven.daporkchop.net/'
-    }
-    maven {
         name = 'NukkitX Snapshots'
         url = 'https://repo.nukkitx.com/snapshot'
     }
@@ -68,12 +65,17 @@ repositories {
 }
 
 dependencies {
-    implementation "net.daporkchop.lib:natives:$porklibVersion"
+    implementation "io.netty:netty-buffer:$nettyVersion"
+    implementation ("net.daporkchop.lib:natives:$porklibVersion") {
+        exclude group: 'io.netty'
+    }
     implementation "com.hivemc.leveldb:leveldb-api:$leveldbVersion"
     implementation "com.hivemc.leveldb:leveldb:$leveldbVersion"
     implementation "org.iq80.snappy:snappy:$snappyVersion"
 
-    testImplementation "net.daporkchop.lib:encoding:$porklibVersion"
+    testImplementation ("net.daporkchop.lib:encoding:$porklibVersion") {
+        exclude group: 'io.netty'
+    }
     testImplementation "junit:junit:$junitVersion"
 
     compileOnly "org.projectlombok:lombok:$lombokVersion"

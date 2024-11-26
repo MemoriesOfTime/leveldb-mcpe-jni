@@ -8,7 +8,7 @@ export TOOLCHAINS	:=	$(CURDIR)/toolchain
 export COMMONSRC	:=	$(CURDIR)/src/main/native
 
 #export CFLAGS		:=	-shared -Ofast -ffast-math -fPIC -ffunction-sections -fdata-sections
-export CFLAGS		:=	-Ofast -ffast-math -fPIC
+export CFLAGS		:=	-Ofast -ffast-math -fPIC -finput-charset=UTF-8 -fexec-charset=UTF-8
 export CXXFLAGS		:=	$(CFLAGS)
 #export LDFLAGS		:=	$(CFLAGS) -Wl,--gc-sections
 export LDFLAGS		:=	$(CFLAGS) -shared
