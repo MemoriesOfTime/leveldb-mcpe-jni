@@ -39,10 +39,14 @@ import static net.daporkchop.lib.common.util.PValidation.checkState;
  */
 @RequiredArgsConstructor
 final class NativeWriteBatch implements DirectWriteBatch {
+    private static final int HEADER_SIZE = 12;
+
     final AtomicLong ptr;
 
     private final NativeDB db;
     private final PCleaner cleaner;
+
+    private int approximateSize;
 
     public NativeWriteBatch(long ptr, @NonNull NativeDB db) {
         this.ptr = new AtomicLong(ptr);
@@ -51,13 +55,27 @@ final class NativeWriteBatch implements DirectWriteBatch {
     }
 
     @Override
+    public int getApproximateSize() {
+        return approximateSize;
+    }
+
+    @Override
+    public int size() {
+        return size0(this.ptr.get());
+    }
+
+    private native int size0(long ptr);
+
+    @Override
     public synchronized DirectWriteBatch put(@NonNull byte[] key, @NonNull byte[] value) {
         this.put0HH(this.ptr.get(), key, 0, key.length, value, 0, value.length);
+        approximateSize += HEADER_SIZE + key.length + value.length;
         return this;
     }
 
     @Override
     public synchronized DirectWriteBatch put(@NonNull ByteBuf key, @NonNull ByteBuf value) {
+        approximateSize += HEADER_SIZE + key.readableBytes() + value.readableBytes();
         if (key.hasArray()) {
             if (value.hasArray()) {
                 this.put0HH(
@@ -122,11 +140,13 @@ final class NativeWriteBatch implements DirectWriteBatch {
     @Override
     public synchronized DirectWriteBatch delete(@NonNull byte[] key) {
         this.delete0H(this.ptr.get(), key, 0, key.length);
+        approximateSize += 6 + key.length;
         return this;
     }
 
     @Override
     public synchronized DirectWriteBatch delete(@NonNull ByteBuf key) {
+        approximateSize += 6 + key.readableBytes();
         if (key.hasArray()) {
             this.delete0H(
                     this.ptr.get(),

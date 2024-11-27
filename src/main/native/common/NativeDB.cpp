@@ -14,8 +14,8 @@ JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_init
     dbID  = env->GetFieldID(cla, "db", "J");
     dcaID = env->GetFieldID(cla, "dca", "J");
 
-    get0_finalID         = env->GetMethodID(cla, "get0_final", "(JILio/netty/buffer/ByteBufAllocator;Lnet/daporkchop/ldbjni/direct/BufType;)Lio/netty/buffer/ByteBuf;");
-    getInto0_finalID     = env->GetMethodID(cla, "getInto0_final", "(JILio/netty/buffer/ByteBuf;)V");
+    get0_finalID         = env->GetMethodID(cla, "get0_final", "([BLio/netty/buffer/ByteBufAllocator;Lnet/daporkchop/ldbjni/direct/BufType;)Lio/netty/buffer/ByteBuf;");
+    getInto0_finalID     = env->GetMethodID(cla, "getInto0_final", "([BLio/netty/buffer/ByteBuf;)V");
     getZeroCopy0_finalID = env->GetMethodID(cla, "getZeroCopy0_final", "(JIJ)Lio/netty/buffer/ByteBuf;");
 }
 
@@ -176,7 +176,10 @@ JNIEXPORT jobject JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_get0H
         return (jobject) nullptr;
     }
 
-    return env->CallObjectMethod(obj, get0_finalID, (jlong) value.data(), value.size(), alloc, type);
+    jbyteArray result = env->NewByteArray(static_cast<jsize>(value.size()));
+    env->SetByteArrayRegion(result, 0, value.size(), reinterpret_cast<const jbyte*>(value.c_str()));
+
+    return env->CallObjectMethod(obj, get0_finalID, result, alloc, type);
 }
 
 JNIEXPORT jobject JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_get0D
@@ -198,7 +201,10 @@ JNIEXPORT jobject JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_get0D
         return (jobject) nullptr;
     }
 
-    return env->CallObjectMethod(obj, get0_finalID, (jlong) value.data(), value.size(), alloc, type);
+    jbyteArray result = env->NewByteArray(static_cast<jsize>(value.size()));
+    env->SetByteArrayRegion(result, 0, value.size(), reinterpret_cast<const jbyte*>(value.c_str()));
+
+    return env->CallObjectMethod(obj, get0_finalID, result, alloc, type);
 }
 
 JNIEXPORT jboolean JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_getInto0H
@@ -227,7 +233,10 @@ JNIEXPORT jboolean JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_getInto0H
         return false;
     }
 
-    env->CallObjectMethod(obj, getInto0_finalID, (jlong) value.data(), value.size(), dst);
+    jbyteArray result = env->NewByteArray(static_cast<jsize>(value.size()));
+    env->SetByteArrayRegion(result, 0, value.size(), reinterpret_cast<const jbyte*>(value.c_str()));
+
+    env->CallObjectMethod(obj, getInto0_finalID, result, dst);
     return true;
 }
 
@@ -250,7 +259,10 @@ JNIEXPORT jboolean JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_getInto0D
         return false;
     }
 
-    env->CallObjectMethod(obj, getInto0_finalID, (jlong) value.data(), value.size(), dst);
+    jbyteArray result = env->NewByteArray(static_cast<jsize>(value.size()));
+    env->SetByteArrayRegion(result, 0, value.size(), reinterpret_cast<const jbyte*>(value.c_str()));
+
+    env->CallObjectMethod(obj, getInto0_finalID, result, dst);
     return true;
 }
 

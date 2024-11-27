@@ -144,14 +144,18 @@ public class LevelDBTest {
             db.compactRange(null, null);
 
             { //sanity checks
-                ByteBuf buf = ((DirectDB) db).get(Unpooled.wrappedBuffer(ToBytes.toBytes(0)));
+                ByteBuf key1 = ByteBufAllocator.DEFAULT.ioBuffer();
+                key1.writeBytes(ToBytes.toBytes(0));
+                ByteBuf buf = ((DirectDB) db).get(key1);
                 try {
                     System.out.println(buf);
                     this.checkIdentical(arr0, buf);
                 } finally {
                     buf.release();
                 }
-                buf = ((DirectDB) db).get(Unpooled.wrappedBuffer(ToBytes.toBytes(1)));
+                ByteBuf key2 = ByteBufAllocator.DEFAULT.ioBuffer();
+                key2.writeBytes(ToBytes.toBytes(1));
+                buf = ((DirectDB) db).get(key2);
                 try {
                     System.out.println(buf);
                     this.checkIdentical(arr1, buf);

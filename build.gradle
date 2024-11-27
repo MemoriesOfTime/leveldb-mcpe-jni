@@ -17,55 +17,66 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  *
  */
-
-apply plugin: "java"
-apply plugin: "maven-publish"
+plugins {
+    id 'java'
+    id 'maven-publish'
+}
 
 ext {
-    //general things
-    javaVersion = "1.8"
-    programVersion = "0.0.10-SNAPSHOT"
+    // General configuration
+    javaVersion = JavaVersion.VERSION_11
+    programVersion = '0.0.10'
 
-    //dependency things
-    junitVersion = "4.12"
-    lombokVersion = "1.16.20"
-    leveldbVersion = "0.11.1-SNAPSHOT"
-    porklibVersion = "0.5.5-SNAPSHOT"
-    snappyVersion = "0.4"
+    // Dependency versions
+    junitVersion = '4.13.1'
+    lombokVersion = '1.18.20'
+    leveldbVersion = '1.0.1'
+    nettyVersion= '4.1.101.Final'
+    porklibVersion = '0.5.8-SNAPSHOT'
+    snappyVersion = '0.5'
 }
 
-group "net.daporkchop"
-version "$programVersion"
+group = 'cn.lanink.leveldb'
+version = programVersion
 
-compileJava {
-    sourceCompatibility = targetCompatibility = "$javaVersion"
+java {
+    sourceCompatibility = javaVersion
+    targetCompatibility = javaVersion
 }
 
-tasks.withType(JavaCompile) {
-    options.encoding = "UTF-8"
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
 }
 
 repositories {
     maven {
-        name = "DaPorkchop_"
-        url = "https://maven.daporkchop.net/"
+        name = 'MemoriesOfTime'
+        url = 'https://repo.lanink.cn/repository/maven-public/'
     }
     maven {
-        name = "NukkitX Snapshots"
-        url = "https://repo.nukkitx.com/snapshot"
+        name = 'DaPorkchop_'
+        url = 'https://maven.daporkchop.net/'
+    }
+    maven {
+        name = 'NukkitX Snapshots'
+        url = 'https://repo.nukkitx.com/snapshot'
     }
     mavenCentral()
 }
 
 dependencies {
-    compile "net.daporkchop.lib:natives:$porklibVersion" //porklib:natives for loading of native libs and java fallback
+    implementation "io.netty:netty-buffer:$nettyVersion"
+    implementation ("net.daporkchop.lib:natives:$porklibVersion") {
+        exclude group: 'io.netty'
+    }
+    implementation "com.hivemc.leveldb:leveldb-api:$leveldbVersion"
+    implementation "com.hivemc.leveldb:leveldb:$leveldbVersion"
+    implementation "org.iq80.snappy:snappy:$snappyVersion"
 
-    compile "org.iq80.leveldb:leveldb:$leveldbVersion" //base java leveldb api
-
-    compile "org.iq80.snappy:snappy:$snappyVersion" //snappy in java (needed for platforms without natives support)
-
-    testCompile "net.daporkchop.lib:encoding:$porklibVersion"
-    testCompile "junit:junit:$junitVersion"
+    testImplementation ("net.daporkchop.lib:encoding:$porklibVersion") {
+        exclude group: 'io.netty'
+    }
+    testImplementation "junit:junit:$junitVersion"
 
     compileOnly "org.projectlombok:lombok:$lombokVersion"
     testCompileOnly "org.projectlombok:lombok:$lombokVersion"
@@ -73,46 +84,33 @@ dependencies {
     testAnnotationProcessor "org.projectlombok:lombok:$lombokVersion"
 }
 
-task sourceJar(type: Jar) {
+tasks.register('sourceJar', Jar) {
     from sourceSets.main.allSource
 }
 
 publishing {
     repositories {
-        if (project.hasProperty("nukkitxMavenUsername") && project.hasProperty("nukkitxMavenPassword")) {
-            maven {
-                credentials {
-                    username = "$nukkitxMavenUsername"
-                    password = "$nukkitxMavenPassword"
-                }
-
-                name = "NukkitX"
-                url = url = version.endsWith('SNAPSHOT') ? "https://repo.nukkitx.com/snapshot" : "https://repo.nukkitx.com/release"
+        if (MOT_MAVEN_USERNAME != null && MOT_MAVEN_PASSWORD != null)
+        maven {
+            credentials {
+                username = MOT_MAVEN_USERNAME
+                password = MOT_MAVEN_PASSWORD
             }
-        }
-        if (project.hasProperty("daporkchopMavenUsername") && project.hasProperty("daporkchopMavenPassword")) {
-            maven {
-                credentials {
-                    username = "$daporkchopMavenUsername"
-                    password = "$daporkchopMavenPassword"
-                }
-
-                name = "DaPorkchop_"
-                url = version.endsWith("SNAPSHOT") ? "https://maven.daporkchop.net/snapshot/" : "https://maven.daporkchop.net/release/"
-            }
+            name = 'repo-lanink-cn'
+            url = version.endsWith('SNAPSHOT') ? 'https://repo.lanink.cn/repository/maven-snapshots/' : 'https://repo.lanink.cn/repository/maven-releases/'
         }
     }
 
     publications {
         maven(MavenPublication) {
             groupId = project.group
-            artifactId = "leveldb-mcpe-jni"
+            artifactId = 'leveldb-mcpe-jni'
             version = project.version
 
             from components.java
 
             artifact sourceJar {
-                classifier "sources"
+                classifier 'sources'
             }
         }
     }
@@ -121,20 +119,20 @@ publishing {
 publish.dependsOn(publishToMavenLocal)
 build.dependsOn(publish)
 
-if (System.getProperty("os.name", "").toLowerCase().replaceAll("[^a-z0-9]+", "").startsWith("windows")) {
+if (System.getProperty('os.name').toLowerCase().startsWith('windows')) {
     throw new IllegalStateException("You are running Windows, which is bad and you should feel bad.\nThis means that native libraries cannot be built.")
 } else {
-    task compileNatives(type: Exec) {
-        workingDir "$projectDir"
-        commandLine "make", String.format("-j%d", Runtime.getRuntime().availableProcessors())
+    tasks.register('compileNatives', Exec) {
+        workingDir projectDir
+        commandLine 'make', "-j${Runtime.runtime.availableProcessors()}"
     }
 
-    compileJava.dependsOn(compileNatives)
+    compileJava.dependsOn compileNatives
 
-    task cleanNatives(type: Exec) {
-        workingDir "$projectDir"
-        commandLine "make", "clean"
+    tasks.register('cleanNatives', Exec) {
+        workingDir projectDir
+        commandLine 'make', 'clean'
     }
 
-    clean.dependsOn(cleanNatives)
+    clean.dependsOn cleanNatives
 }
