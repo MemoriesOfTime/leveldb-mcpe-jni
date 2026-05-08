@@ -22,18 +22,14 @@ package net.daporkchop.ldbjni.natives;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.Unpooled;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.buffer.UnpooledUnsafeDirectByteBuf;
-import io.netty.util.internal.PlatformDependent;
 import lombok.NonNull;
 import net.daporkchop.ldbjni.direct.BufType;
 import net.daporkchop.ldbjni.direct.DirectDB;
 import net.daporkchop.ldbjni.direct.DirectReadOptions;
 import net.daporkchop.ldbjni.direct.DirectWriteBatch;
-import net.daporkchop.lib.common.system.PlatformInfo;
 import net.daporkchop.lib.unsafe.PCleaner;
-import net.daporkchop.lib.unsafe.PUnsafe;
 import org.iq80.leveldb.DBException;
 import org.iq80.leveldb.DBIterator;
 import org.iq80.leveldb.Options;
@@ -65,8 +61,6 @@ import static net.daporkchop.lib.common.util.PValidation.*;
 final class NativeDB implements DirectDB {
     private static final ReadOptions DEFAULT_READ_OPTIONS = new ReadOptions();
     private static final WriteOptions DEFAULT_WRITE_OPTIONS = new WriteOptions();
-
-    private static final long CLEANER_OFFSET = PUnsafe.pork_getOffset(ByteBuffer.allocateDirect(0).getClass(), "cleaner");
 
     static {
         init();
@@ -513,11 +507,6 @@ final class NativeDB implements DirectDB {
 
     @Override
     public ByteBuf getZeroCopy(@NonNull ByteBuf key, @NonNull ReadOptions options) throws DBException {
-        //jdk9+限制了反射，暂时调用get方法
-        if (PlatformInfo.JAVA_VERSION > 8) {
-            return get(key, options);
-        }
-
         this.readLock.lock();
         try {
             this.assertOpen();
@@ -549,8 +538,8 @@ final class NativeDB implements DirectDB {
 
     private native ByteBuf getZeroCopy0D(long keyAddr, int keyLen, boolean verifyChecksums, boolean fillCache, long snapshot);
 
-    private ByteBuf getZeroCopy0_final(long valueAddr, int valueLen, long strAddr) {
-        return new StdStringByteBuf(valueAddr, valueLen, strAddr);
+    private ByteBuf getZeroCopy0_final(ByteBuffer value, long strAddr) {
+        return new StdStringByteBuf(value == null ? ByteBuffer.allocateDirect(0) : value, strAddr);
     }
 
     @Override
@@ -1001,8 +990,8 @@ final class NativeDB implements DirectDB {
     private static final class StdStringByteBuf extends UnpooledUnsafeDirectByteBuf {
         protected final long strAddr;
 
-        public StdStringByteBuf(long valueAddr, int valueLen, long strAddr) {
-            super(UnpooledByteBufAllocator.DEFAULT, PlatformDependent.directBuffer(valueAddr, valueLen), valueLen);
+        public StdStringByteBuf(@NonNull ByteBuffer value, long strAddr) {
+            super(UnpooledByteBufAllocator.DEFAULT, value, value.remaining());
 
             this.strAddr = strAddr;
         }
@@ -1019,7 +1008,11 @@ final class NativeDB implements DirectDB {
 
         @Override
         protected void deallocate() {
-            deleteString(this.strAddr);
+            try {
+                super.deallocate();
+            } finally {
+                deleteString(this.strAddr);
+            }
         }
     }
 }

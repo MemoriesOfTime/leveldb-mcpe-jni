@@ -30,7 +30,6 @@ import net.daporkchop.ldbjni.direct.DirectDB;
 import net.daporkchop.ldbjni.direct.DirectReadOptions;
 import net.daporkchop.ldbjni.direct.DirectWriteBatch;
 import net.daporkchop.lib.common.misc.file.PFiles;
-import net.daporkchop.lib.encoding.ToBytes;
 import org.iq80.leveldb.CompressionType;
 import org.iq80.leveldb.DBIterator;
 import org.iq80.leveldb.Options;
@@ -45,6 +44,7 @@ import org.junit.Test;
 import java.io.File;
 import java.io.IOException;
 import java.lang.reflect.Constructor;
+import java.nio.ByteOrder;
 import java.util.Arrays;
 import java.util.Map;
 
@@ -52,6 +52,7 @@ import static net.daporkchop.lib.common.util.PValidation.checkState;
 
 public class ProviderParityTest {
     private static final File TEST_ROOT = new File("test_out/provider_parity");
+    private static final boolean LITTLE_ENDIAN = ByteOrder.nativeOrder() == ByteOrder.LITTLE_ENDIAN;
 
     @BeforeClass
     public static void ensureNativeProviderAvailable() {
@@ -129,6 +130,16 @@ public class ProviderParityTest {
                 } finally {
                     zeroCopyOptions.release();
                     zeroCopyOptionsKey.release();
+                }
+
+                db.put(bytes(6), new byte[0]);
+                ByteBuf emptyZeroCopyKey = this.heap(6);
+                ByteBuf emptyZeroCopy = db.getZeroCopy(emptyZeroCopyKey);
+                try {
+                    this.checkBytes(new byte[0], emptyZeroCopy);
+                } finally {
+                    emptyZeroCopy.release();
+                    emptyZeroCopyKey.release();
                 }
 
                 db.delete(bytes(0));
@@ -455,7 +466,21 @@ public class ProviderParityTest {
     }
 
     private static byte[] bytes(int value) {
-        return ToBytes.toBytes(value);
+        if (LITTLE_ENDIAN) {
+            return new byte[] {
+                    (byte) value,
+                    (byte) (value >>> 8),
+                    (byte) (value >>> 16),
+                    (byte) (value >>> 24)
+            };
+        } else {
+            return new byte[] {
+                    (byte) (value >>> 24),
+                    (byte) (value >>> 16),
+                    (byte) (value >>> 8),
+                    (byte) value
+            };
+        }
     }
 
     private void checkBytes(byte[] expected, ByteBuf actual) {

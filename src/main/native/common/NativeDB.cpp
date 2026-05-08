@@ -28,6 +28,22 @@ static bool checkIteratorStatus(JNIEnv* env, leveldb::Iterator* iterator) {
     return checkException(env, status);
 }
 
+static jobject wrapString(JNIEnv* env, jobject obj, std::string* valuePtr) {
+    jobject valueBuffer = valuePtr->empty()
+                          ? nullptr
+                          : env->NewDirectByteBuffer((void*) valuePtr->data(), static_cast<jlong>(valuePtr->size()));
+    if (env->ExceptionCheck() || (valueBuffer == nullptr && !valuePtr->empty())) {
+        delete valuePtr;
+        return nullptr;
+    }
+
+    jobject result = env->CallObjectMethod(obj, getZeroCopy0_finalID, valueBuffer, (jlong) valuePtr);
+    if (env->ExceptionCheck() || result == nullptr) {
+        delete valuePtr;
+    }
+    return result;
+}
+
 extern "C" {
 
 JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_init
@@ -37,7 +53,7 @@ JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_init
 
     get0_finalID         = env->GetMethodID(cla, "get0_final", "([BLio/netty/buffer/ByteBufAllocator;Lnet/daporkchop/ldbjni/direct/BufType;)Lio/netty/buffer/ByteBuf;");
     getInto0_finalID     = env->GetMethodID(cla, "getInto0_final", "([BLio/netty/buffer/ByteBuf;)V");
-    getZeroCopy0_finalID = env->GetMethodID(cla, "getZeroCopy0_final", "(JIJ)Lio/netty/buffer/ByteBuf;");
+    getZeroCopy0_finalID = env->GetMethodID(cla, "getZeroCopy0_final", "(Ljava/nio/ByteBuffer;J)Lio/netty/buffer/ByteBuf;");
 }
 
 JNIEXPORT jlong JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_openDb
@@ -445,7 +461,7 @@ JNIEXPORT jobject JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_getZeroCop
         return (jobject) nullptr;
     }
 
-    return env->CallObjectMethod(obj, getZeroCopy0_finalID, (jlong) valuePtr->data(), valuePtr->size(), (jlong) valuePtr);
+    return wrapString(env, obj, valuePtr);
 }
 
 JNIEXPORT jobject JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_getZeroCopy0D
@@ -465,7 +481,7 @@ JNIEXPORT jobject JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_getZeroCop
         return (jobject) nullptr;
     }
 
-    return env->CallObjectMethod(obj, getZeroCopy0_finalID, (jlong) valuePtr->data(), valuePtr->size(), (jlong) valuePtr);
+    return wrapString(env, obj, valuePtr);
 }
 
 JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_put0HH

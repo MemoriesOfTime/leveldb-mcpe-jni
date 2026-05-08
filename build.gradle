@@ -55,10 +55,6 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
-tasks.withType(Test).configureEach {
-    jvmArgs '--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED'
-}
-
 repositories {
     maven {
         name = 'mot-repo-release'
