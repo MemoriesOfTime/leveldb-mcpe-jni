@@ -1,0 +1,15 @@
+export DARWIN_MIN_VERSION	?=	10.13
+X86_64_APPLE_DARWIN_CC		?=	clang
+X86_64_APPLE_DARWIN_CXX		?=	clang++
+X86_64_APPLE_DARWIN_STRIP	?=	strip -x
+
+export CFLAGS		:=	$(filter-out -Ofast,$(CFLAGS)) -O3 -arch x86_64 -mmacosx-version-min=$(DARWIN_MIN_VERSION)
+export CXXFLAGS		:=	$(filter-out -Ofast,$(CXXFLAGS)) -O3 -arch x86_64 -mmacosx-version-min=$(DARWIN_MIN_VERSION)
+export LDFLAGS		:=	$(filter-out -shared -Ofast,$(LDFLAGS)) -O3 -arch x86_64 -mmacosx-version-min=$(DARWIN_MIN_VERSION) -dynamiclib
+
+export CC		:=	$(X86_64_APPLE_DARWIN_CC)
+export CXX		:=	$(X86_64_APPLE_DARWIN_CXX)
+export LD		:=	$(X86_64_APPLE_DARWIN_CXX)
+export STRIP	:=	$(X86_64_APPLE_DARWIN_STRIP)
+
+export EXT	:=	dylib

@@ -1,0 +1,29 @@
+ifndef LDB_NATIVES_DEBUG
+# release mode
+export CFLAGS		:=	$(CFLAGS) -flto=$(NPROC) -fno-fat-lto-objects
+export CXXFLAGS		:=	$(CXXFLAGS) -flto=$(NPROC) -fno-fat-lto-objects
+export LDFLAGS		:=	$(LDFLAGS) -flto=$(NPROC) -fno-fat-lto-objects
+else
+# debug mode
+export CFLAGS		:=	$(CFLAGS)
+export CXXFLAGS		:=	$(CXXFLAGS)
+export LDFLAGS		:=	$(LDFLAGS)
+endif
+
+X86_64_LINUX_MUSL_CC		?=	$(shell command -v x86_64-linux-musl-gcc 2>/dev/null || command -v x86_64-unknown-linux-musl-gcc 2>/dev/null || command -v x86_64-alpine-linux-musl-gcc 2>/dev/null || echo x86_64-linux-musl-gcc)
+X86_64_LINUX_MUSL_CXX		?=	$(shell command -v x86_64-linux-musl-g++ 2>/dev/null || command -v x86_64-unknown-linux-musl-g++ 2>/dev/null || command -v x86_64-alpine-linux-musl-g++ 2>/dev/null || echo x86_64-linux-musl-g++)
+X86_64_LINUX_MUSL_AR		?=	$(shell command -v x86_64-linux-musl-ar 2>/dev/null || command -v x86_64-unknown-linux-musl-ar 2>/dev/null || command -v x86_64-alpine-linux-musl-ar 2>/dev/null || echo x86_64-linux-musl-ar)
+X86_64_LINUX_MUSL_RANLIB	?=	$(shell command -v x86_64-linux-musl-ranlib 2>/dev/null || command -v x86_64-unknown-linux-musl-ranlib 2>/dev/null || command -v x86_64-alpine-linux-musl-ranlib 2>/dev/null || echo x86_64-linux-musl-ranlib)
+X86_64_LINUX_MUSL_STRIP		?=	$(shell command -v x86_64-linux-musl-strip 2>/dev/null || command -v x86_64-unknown-linux-musl-strip 2>/dev/null || command -v x86_64-alpine-linux-musl-strip 2>/dev/null || echo x86_64-linux-musl-strip)
+
+export CC		:= $(X86_64_LINUX_MUSL_CC)
+export CXX		:= $(X86_64_LINUX_MUSL_CXX)
+export LD		:= $(X86_64_LINUX_MUSL_CXX)
+export AR		:= $(X86_64_LINUX_MUSL_AR)
+export ARFLAGS	:= rcs
+export RANLIB	:= $(X86_64_LINUX_MUSL_RANLIB)
+export STRIP	:= $(X86_64_LINUX_MUSL_STRIP)
+export CHOST	:= x86_64-linux-musl
+export ZLIB_CONFIGURE_FLAGS	:= --uname=Linux
+
+export EXT	:=	so

@@ -26,9 +26,7 @@ import io.netty.buffer.Unpooled;
 import io.netty.buffer.UnpooledByteBufAllocator;
 import io.netty.buffer.UnpooledUnsafeDirectByteBuf;
 import io.netty.util.internal.PlatformDependent;
-import io.netty.util.internal.shaded.org.jctools.util.PortableJvmInfo;
 import lombok.NonNull;
-import lombok.RequiredArgsConstructor;
 import net.daporkchop.ldbjni.direct.BufType;
 import net.daporkchop.ldbjni.direct.DirectDB;
 import net.daporkchop.ldbjni.direct.DirectReadOptions;
@@ -48,6 +46,13 @@ import org.iq80.leveldb.WriteOptions;
 import java.io.File;
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.AbstractMap;
+import java.util.Collections;
+import java.util.Map;
+import java.util.NoSuchElementException;
+import java.util.Set;
+import java.util.WeakHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
@@ -82,6 +87,7 @@ final class NativeDB implements DirectDB {
     private long db;
     private long dca;
     private final PCleaner cleaner;
+    private final Set<NativeResource> resources = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
     private final Lock readLock;
     private final Lock writeLock;
@@ -124,7 +130,7 @@ final class NativeDB implements DirectDB {
         this.readLock.lock();
         try {
             this.assertOpen();
-            return this.get0(key, options.verifyChecksums(), options.fillCache(), 0L); //TODO: snapshot
+            return this.get0(key, options.verifyChecksums(), options.fillCache(), snapshotPtr(options));
         } finally {
             this.readLock.unlock();
         }
@@ -139,17 +145,14 @@ final class NativeDB implements DirectDB {
 
     @Override
     public Snapshot put(@NonNull byte[] key, @NonNull byte[] value, @NonNull WriteOptions options) throws DBException {
-        if (options.snapshot()) {
-            throw new UnsupportedOperationException("snapshot");
-        }
-
-        this.readLock.lock();
+        Lock lock = options.snapshot() ? this.writeLock : this.readLock;
+        lock.lock();
         try {
             this.assertOpen();
             this.put0HH(key, 0, key.length, value, 0, value.length, options.sync());
-            return null;
+            return options.snapshot() ? this.snapshot0() : null;
         } finally {
-            this.readLock.unlock();
+            lock.unlock();
         }
     }
 
@@ -160,17 +163,14 @@ final class NativeDB implements DirectDB {
 
     @Override
     public Snapshot delete(@NonNull byte[] key, @NonNull WriteOptions options) throws DBException {
-        if (options.snapshot()) {
-            throw new UnsupportedOperationException("snapshot");
-        }
-
-        this.readLock.lock();
+        Lock lock = options.snapshot() ? this.writeLock : this.readLock;
+        lock.lock();
         try {
             this.assertOpen();
             this.delete0H(key, 0, key.length, options.sync());
-            return null;
+            return options.snapshot() ? this.snapshot0() : null;
         } finally {
-            this.readLock.unlock();
+            lock.unlock();
         }
     }
 
@@ -192,19 +192,18 @@ final class NativeDB implements DirectDB {
     public Snapshot write(@NonNull WriteBatch writeBatch, @NonNull WriteOptions options) throws DBException {
         if (!(writeBatch instanceof NativeWriteBatch)) {
             throw new IllegalArgumentException(writeBatch.getClass().getCanonicalName());
-        } else if (options.snapshot()) {
-            throw new UnsupportedOperationException("snapshot");
         }
 
-        this.readLock.lock();
+        Lock lock = options.snapshot() ? this.writeLock : this.readLock;
+        lock.lock();
         try {
             this.assertOpen();
             synchronized (writeBatch) {
                 this.writeBatch0(((NativeWriteBatch) writeBatch).ptr.get(), options.sync());
             }
-            return null;
+            return options.snapshot() ? this.snapshot0() : null;
         } finally {
-            this.readLock.unlock();
+            lock.unlock();
         }
     }
 
@@ -212,28 +211,100 @@ final class NativeDB implements DirectDB {
 
     @Override
     public DBIterator iterator() {
-        throw new UnsupportedOperationException("iterator");
+        return this.iterator(DEFAULT_READ_OPTIONS);
     }
 
     @Override
     public DBIterator iterator(@NonNull ReadOptions options) {
-        throw new UnsupportedOperationException("iterator");
+        this.readLock.lock();
+        try {
+            this.assertOpen();
+            return new NativeIterator(this, this.iterator0(options.verifyChecksums(), options.fillCache(), snapshotPtr(options)));
+        } finally {
+            this.readLock.unlock();
+        }
     }
+
+    private native long iterator0(boolean verifyChecksums, boolean fillCache, long snapshot);
+
+    private static native void releaseIterator0(long iterator);
+
+    private static native void iteratorSeekToFirst0(long iterator);
+
+    private static native void iteratorSeekToLast0(long iterator);
+
+    private static native void iteratorSeek0(long iterator, byte[] target);
+
+    private static native boolean iteratorValid0(long iterator);
+
+    private static native void iteratorNext0(long iterator);
+
+    private static native void iteratorPrev0(long iterator);
+
+    private static native byte[] iteratorKey0(long iterator);
+
+    private static native byte[] iteratorValue0(long iterator);
+
+    private static native void checkIteratorStatus0(long iterator);
 
     @Override
     public Snapshot getSnapshot() {
-        throw new UnsupportedOperationException("getSnapshot");
+        this.readLock.lock();
+        try {
+            this.assertOpen();
+            return this.snapshot0();
+        } finally {
+            this.readLock.unlock();
+        }
     }
+
+    private NativeSnapshot snapshot0() {
+        return new NativeSnapshot(this.getSnapshot0(), this);
+    }
+
+    private native long getSnapshot0();
+
+    private native void releaseSnapshot0(long snapshot);
 
     @Override
     public long[] getApproximateSizes(@NonNull Range... ranges) {
-        throw new UnsupportedOperationException("getApproximateSizes");
+        this.readLock.lock();
+        try {
+            this.assertOpen();
+
+            long[] sizes = new long[ranges.length];
+            for (int i = 0; i < ranges.length; i++) {
+                Range range = ranges[i];
+                if (range == null) {
+                    throw new NullPointerException("ranges[" + i + "]");
+                } else if (range.start() == null) {
+                    throw new NullPointerException("ranges[" + i + "].start");
+                } else if (range.limit() == null) {
+                    throw new NullPointerException("ranges[" + i + "].limit");
+                }
+
+                sizes[i] = this.getApproximateSize0(range.start(), range.limit());
+            }
+            return sizes;
+        } finally {
+            this.readLock.unlock();
+        }
     }
 
+    private native long getApproximateSize0(byte[] start, byte[] limit);
+
     @Override
-    public String getProperty(@NonNull String s) {
-        throw new UnsupportedOperationException("getProperty");
+    public String getProperty(@NonNull String name) {
+        this.readLock.lock();
+        try {
+            this.assertOpen();
+            return this.getProperty0(name);
+        } finally {
+            this.readLock.unlock();
+        }
     }
+
+    private native String getProperty0(String name);
 
     @Override
     public void suspendCompactions() throws InterruptedException {
@@ -260,18 +331,80 @@ final class NativeDB implements DirectDB {
 
     @Override
     public void close() throws IOException {
-        if (this.cleaner.hasRun()) {
-            //fast-track return to avoid locking
-            return;
-        }
         this.writeLock.lock();
         try {
-            if (!this.cleaner.hasRun()) {
+            if (this.db != 0L) {
+                this.closeResources();
                 this.cleaner.clean();
                 this.db = this.dca = 0L;
             }
         } finally {
             this.writeLock.unlock();
+        }
+    }
+
+    private void registerResource(@NonNull NativeResource resource) {
+        this.resources.add(resource);
+    }
+
+    private void unregisterResource(@NonNull NativeResource resource) {
+        this.resources.remove(resource);
+    }
+
+    private void closeResources() {
+        NativeResource[] resources;
+        synchronized (this.resources) {
+            resources = this.resources.toArray(new NativeResource[0]);
+            this.resources.clear();
+        }
+        for (NativeResource resource : resources) {
+            resource.closeFromDB();
+        }
+    }
+
+    private static long snapshotPtr(@NonNull ReadOptions options) {
+        Snapshot snapshot = options.snapshot();
+        if (snapshot == null) {
+            return 0L;
+        } else if (!(snapshot instanceof NativeSnapshot)) {
+            throw new IllegalArgumentException(snapshot.getClass().getCanonicalName());
+        }
+        return ((NativeSnapshot) snapshot).ptr();
+    }
+
+    private void releaseIterator(@NonNull AtomicLong iterator) {
+        this.readLock.lock();
+        try {
+            if (this.db != 0L) {
+                this.releaseIteratorFromDB(iterator);
+            }
+        } finally {
+            this.readLock.unlock();
+        }
+    }
+
+    private void releaseIteratorFromDB(@NonNull AtomicLong iterator) {
+        long ptr = iterator.getAndSet(0L);
+        if (ptr != 0L) {
+            releaseIterator0(ptr);
+        }
+    }
+
+    private void releaseSnapshot(@NonNull AtomicLong snapshot) {
+        this.readLock.lock();
+        try {
+            if (this.db != 0L) {
+                this.releaseSnapshotFromDB(snapshot);
+            }
+        } finally {
+            this.readLock.unlock();
+        }
+    }
+
+    private void releaseSnapshotFromDB(@NonNull AtomicLong snapshot) {
+        long ptr = snapshot.getAndSet(0L);
+        if (ptr != 0L) {
+            this.releaseSnapshot0(ptr);
         }
     }
 
@@ -298,15 +431,16 @@ final class NativeDB implements DirectDB {
     public ByteBuf get(@NonNull ByteBuf key, @NonNull ReadOptions options) throws DBException {
         this.readLock.lock();
         try {
-            this.assertOpen(); //TODO: snapshot
+            this.assertOpen();
+            long snapshot = snapshotPtr(options);
             if (key.hasArray()) {
                 return this.get0H(
                         key.array(), key.arrayOffset() + key.readerIndex(), key.readableBytes(),
-                        options.verifyChecksums(), options.fillCache(), 0L, this.selectAlloc(options), this.selectType(options));
+                        options.verifyChecksums(), options.fillCache(), snapshot, this.selectAlloc(options), this.selectType(options));
             } else if (key.hasMemoryAddress()) {
                 return this.get0D(
                         key.memoryAddress() + key.readerIndex(), key.readableBytes(),
-                        options.verifyChecksums(), options.fillCache(), 0L, this.selectAlloc(options), this.selectType(options));
+                        options.verifyChecksums(), options.fillCache(), snapshot, this.selectAlloc(options), this.selectType(options));
             } else {
                 ByteBuf keyCopy = this.selectAlloc(options).ioBuffer(key.readableBytes(), key.readableBytes());
                 try {
@@ -339,15 +473,16 @@ final class NativeDB implements DirectDB {
     public boolean getInto(@NonNull ByteBuf key, @NonNull ByteBuf dst, @NonNull ReadOptions options) throws DBException {
         this.readLock.lock();
         try {
-            this.assertOpen(); //TODO: snapshot
+            this.assertOpen();
+            long snapshot = snapshotPtr(options);
             if (key.hasArray()) {
                 return this.getInto0H(
                         key.array(), key.arrayOffset() + key.readerIndex(), key.readableBytes(),
-                        options.verifyChecksums(), options.fillCache(), 0L, dst);
+                        options.verifyChecksums(), options.fillCache(), snapshot, dst);
             } else if (key.hasMemoryAddress()) {
                 return this.getInto0D(
                         key.memoryAddress() + key.readerIndex(), key.readableBytes(),
-                        options.verifyChecksums(), options.fillCache(), 0L, dst);
+                        options.verifyChecksums(), options.fillCache(), snapshot, dst);
             } else {
                 ByteBuf keyCopy = this.selectAlloc(options).ioBuffer(key.readableBytes(), key.readableBytes());
                 try {
@@ -385,15 +520,16 @@ final class NativeDB implements DirectDB {
 
         this.readLock.lock();
         try {
-            this.assertOpen(); //TODO: snapshot
+            this.assertOpen();
+            long snapshot = snapshotPtr(options);
             if (key.hasArray()) {
                 return this.getZeroCopy0H(
                         key.array(), key.arrayOffset() + key.readerIndex(), key.readableBytes(),
-                        options.verifyChecksums(), options.fillCache(), 0L);
+                        options.verifyChecksums(), options.fillCache(), snapshot);
             } else if (key.hasMemoryAddress()) {
                 return this.getZeroCopy0D(
                         key.memoryAddress() + key.readerIndex(), key.readableBytes(),
-                        options.verifyChecksums(), options.fillCache(), 0L);
+                        options.verifyChecksums(), options.fillCache(), snapshot);
             } else {
                 ByteBuf keyCopy = this.selectAlloc(options).ioBuffer(key.readableBytes(), key.readableBytes());
                 try {
@@ -424,11 +560,8 @@ final class NativeDB implements DirectDB {
 
     @Override
     public Snapshot put(@NonNull ByteBuf key, @NonNull ByteBuf value, @NonNull WriteOptions options) throws DBException {
-        if (options.snapshot()) {
-            throw new UnsupportedOperationException("snapshot");
-        }
-
-        this.readLock.lock();
+        Lock lock = options.snapshot() ? this.writeLock : this.readLock;
+        lock.lock();
         try {
             this.assertOpen();
             if (key.hasArray()) {
@@ -437,13 +570,13 @@ final class NativeDB implements DirectDB {
                             key.array(), key.arrayOffset() + key.readerIndex(), key.readableBytes(),
                             value.array(), value.arrayOffset() + value.readerIndex(), value.readableBytes(),
                             options.sync());
-                    return null;
+                    return options.snapshot() ? this.snapshot0() : null;
                 } else if (value.hasMemoryAddress()) {
                     this.put0HD(
                             key.array(), key.arrayOffset() + key.readerIndex(), key.readableBytes(),
                             value.memoryAddress() + value.readerIndex(), value.readableBytes(),
                             options.sync());
-                    return null;
+                    return options.snapshot() ? this.snapshot0() : null;
                 }
             } else if (key.hasMemoryAddress())    {
                 if (value.hasArray()) {
@@ -451,13 +584,13 @@ final class NativeDB implements DirectDB {
                             key.memoryAddress() + key.readerIndex(), key.readableBytes(),
                             value.array(), value.arrayOffset() + value.readerIndex(), value.readableBytes(),
                             options.sync());
-                    return null;
+                    return options.snapshot() ? this.snapshot0() : null;
                 } else if (value.hasMemoryAddress()) {
                     this.put0DD(
                             key.memoryAddress() + key.readerIndex(), key.readableBytes(),
                             value.memoryAddress() + value.readerIndex(), value.readableBytes(),
                             options.sync());
-                    return null;
+                    return options.snapshot() ? this.snapshot0() : null;
                 }
             }
             if (!key.hasArray() && !key.hasMemoryAddress()) {
@@ -482,7 +615,7 @@ final class NativeDB implements DirectDB {
                 throw new IllegalArgumentException(key + " " + value);
             }
         } finally {
-            this.readLock.unlock();
+            lock.unlock();
         }
     }
 
@@ -501,11 +634,8 @@ final class NativeDB implements DirectDB {
 
     @Override
     public Snapshot delete(@NonNull ByteBuf key, @NonNull WriteOptions options) throws DBException {
-        if (options.snapshot()) {
-            throw new UnsupportedOperationException("snapshot");
-        }
-
-        this.readLock.lock();
+        Lock lock = options.snapshot() ? this.writeLock : this.readLock;
+        lock.lock();
         try {
             this.assertOpen();
             if (key.hasArray()) {
@@ -526,9 +656,9 @@ final class NativeDB implements DirectDB {
                     keyCopy.release();
                 }
             }
-            return null;
+            return options.snapshot() ? this.snapshot0() : null;
         } finally {
-            this.readLock.unlock();
+            lock.unlock();
         }
     }
 
@@ -542,14 +672,329 @@ final class NativeDB implements DirectDB {
         }
     }
 
-    @RequiredArgsConstructor
     private static final class Releaser implements Runnable {
         private final long db;
         private final long dca;
 
+        private Releaser(long db, long dca) {
+            this.db = db;
+            this.dca = dca;
+        }
+
         @Override
         public void run() {
             closeDb(this.db, this.dca);
+        }
+    }
+
+    private interface NativeResource {
+        void closeFromDB();
+    }
+
+    private static final class NativeIterator implements DBIterator, NativeResource {
+        @NonNull
+        private final NativeDB db;
+        @NonNull
+        private final AtomicLong ptr;
+        @NonNull
+        private final PCleaner cleaner;
+        private Direction direction = Direction.FORWARD;
+        private Position position = Position.START;
+        private Map.Entry<byte[], byte[]> entry;
+
+        public NativeIterator(@NonNull NativeDB db, long ptr) {
+            this.db = db;
+            this.ptr = new AtomicLong(ptr);
+            this.cleaner = PCleaner.cleaner(this, new IteratorReleaser(this.ptr, this.db));
+            this.db.registerResource(this);
+        }
+
+        @Override
+        public void seek(@NonNull byte[] key) {
+            this.db.readLock.lock();
+            try {
+                this.db.assertOpen();
+                long ptr = this.ptr();
+                iteratorSeek0(ptr, key);
+                this.direction = Direction.FORWARD;
+                this.position = iteratorValid0(ptr) ? Position.FORWARD : Position.END;
+                this.entry = this.position.isValid() ? entry(ptr) : null;
+            } finally {
+                this.db.readLock.unlock();
+            }
+        }
+
+        @Override
+        public void seekToFirst() {
+            this.db.readLock.lock();
+            try {
+                this.db.assertOpen();
+                long ptr = this.ptr();
+                iteratorSeekToFirst0(ptr);
+                this.direction = Direction.FORWARD;
+                this.position = iteratorValid0(ptr) ? Position.FORWARD : Position.END;
+                this.entry = this.position.isValid() ? entry(ptr) : null;
+            } finally {
+                this.db.readLock.unlock();
+            }
+        }
+
+        @Override
+        public Map.Entry<byte[], byte[]> peekNext() {
+            if (!this.hasNext()) {
+                throw new NoSuchElementException();
+            }
+            return this.entry;
+        }
+
+        @Override
+        public boolean hasPrev() {
+            this.db.readLock.lock();
+            try {
+                this.db.assertOpen();
+                long ptr = this.ptr();
+                if (this.direction != Direction.REVERSE) {
+                    this.entry = null;
+                }
+                if (this.entry == null) {
+                    this.entry = this.prevEntry(ptr);
+                }
+                this.direction = Direction.REVERSE;
+                return this.entry != null;
+            } finally {
+                this.db.readLock.unlock();
+            }
+        }
+
+        @Override
+        public Map.Entry<byte[], byte[]> prev() {
+            if (!this.hasPrev()) {
+                throw new NoSuchElementException();
+            }
+            Map.Entry<byte[], byte[]> entry = this.entry;
+            this.entry = null;
+            return entry;
+        }
+
+        @Override
+        public Map.Entry<byte[], byte[]> peekPrev() {
+            if (!this.hasPrev()) {
+                throw new NoSuchElementException();
+            }
+            return this.entry;
+        }
+
+        @Override
+        public void seekToLast() {
+            this.db.readLock.lock();
+            try {
+                this.db.assertOpen();
+                long ptr = this.ptr();
+                iteratorSeekToLast0(ptr);
+                this.direction = Direction.REVERSE;
+                this.position = iteratorValid0(ptr) ? Position.REVERSE : Position.START;
+                this.entry = this.position.isValid() ? entry(ptr) : null;
+            } finally {
+                this.db.readLock.unlock();
+            }
+        }
+
+        @Override
+        public boolean hasNext() {
+            this.db.readLock.lock();
+            try {
+                this.db.assertOpen();
+                long ptr = this.ptr();
+                if (this.direction != Direction.FORWARD) {
+                    this.entry = null;
+                }
+                if (this.entry == null) {
+                    this.entry = this.nextEntry(ptr);
+                }
+                this.direction = Direction.FORWARD;
+                return this.entry != null;
+            } finally {
+                this.db.readLock.unlock();
+            }
+        }
+
+        @Override
+        public Map.Entry<byte[], byte[]> next() {
+            if (!this.hasNext()) {
+                throw new NoSuchElementException();
+            }
+            Map.Entry<byte[], byte[]> entry = this.entry;
+            this.entry = null;
+            return entry;
+        }
+
+        @Override
+        public void remove() {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override
+        public void close() {
+            this.db.readLock.lock();
+            try {
+                this.cleaner.clean();
+            } finally {
+                this.db.readLock.unlock();
+            }
+            this.db.unregisterResource(this);
+        }
+
+        @Override
+        public void closeFromDB() {
+            this.db.releaseIteratorFromDB(this.ptr);
+        }
+
+        private long ptr() {
+            long ptr = this.ptr.get();
+            if (ptr == 0L) {
+                throw new IllegalStateException("NativeIterator already closed!");
+            }
+            return ptr;
+        }
+
+        private Map.Entry<byte[], byte[]> nextEntry(long ptr) {
+            switch (this.position) {
+            case START:
+                iteratorSeekToFirst0(ptr);
+                break;
+            case END:
+                checkIteratorStatus0(ptr);
+                return null;
+            default:
+                if (!iteratorValid0(ptr)) {
+                    checkIteratorStatus0(ptr);
+                    this.position = Position.END;
+                    return null;
+                }
+                iteratorNext0(ptr);
+            }
+            this.position = iteratorValid0(ptr) ? Position.FORWARD : Position.END;
+            return this.position.isValid() ? entry(ptr) : null;
+        }
+
+        private Map.Entry<byte[], byte[]> prevEntry(long ptr) {
+            switch (this.position) {
+            case START:
+                checkIteratorStatus0(ptr);
+                return null;
+            case END:
+                iteratorSeekToLast0(ptr);
+                break;
+            default:
+                if (!iteratorValid0(ptr)) {
+                    checkIteratorStatus0(ptr);
+                    this.position = Position.START;
+                    return null;
+                }
+                iteratorPrev0(ptr);
+            }
+            this.position = iteratorValid0(ptr) ? Position.REVERSE : Position.START;
+            return this.position.isValid() ? entry(ptr) : null;
+        }
+
+        private static Map.Entry<byte[], byte[]> entry(long ptr) {
+            return new AbstractMap.SimpleImmutableEntry<>(iteratorKey0(ptr), iteratorValue0(ptr));
+        }
+
+        private enum Direction {
+            FORWARD,
+            REVERSE
+        }
+
+        private enum Position {
+            START(false),
+            END(false),
+            FORWARD(true),
+            REVERSE(true);
+
+            private final boolean valid;
+
+            Position(boolean valid) {
+                this.valid = valid;
+            }
+
+            private boolean isValid() {
+                return this.valid;
+            }
+        }
+    }
+
+    private static final class IteratorReleaser implements Runnable {
+        @NonNull
+        private final AtomicLong ptr;
+        @NonNull
+        private final NativeDB db;
+
+        private IteratorReleaser(@NonNull AtomicLong ptr, @NonNull NativeDB db) {
+            this.ptr = ptr;
+            this.db = db;
+        }
+
+        @Override
+        public void run() {
+            this.db.releaseIterator(this.ptr);
+        }
+    }
+
+    private static final class NativeSnapshot implements Snapshot, NativeResource {
+        @NonNull
+        private final NativeDB db;
+        @NonNull
+        private final AtomicLong ptr;
+        @NonNull
+        private final PCleaner cleaner;
+
+        public NativeSnapshot(long ptr, @NonNull NativeDB db) {
+            this.db = db;
+            this.ptr = new AtomicLong(ptr);
+            this.cleaner = PCleaner.cleaner(this, new SnapshotReleaser(this.ptr, this.db));
+            this.db.registerResource(this);
+        }
+
+        @Override
+        public void close() {
+            this.db.readLock.lock();
+            try {
+                this.cleaner.clean();
+            } finally {
+                this.db.readLock.unlock();
+            }
+            this.db.unregisterResource(this);
+        }
+
+        @Override
+        public void closeFromDB() {
+            this.db.releaseSnapshotFromDB(this.ptr);
+        }
+
+        private long ptr() {
+            long ptr = this.ptr.get();
+            if (ptr == 0L) {
+                throw new IllegalStateException("NativeSnapshot already closed!");
+            }
+            return ptr;
+        }
+    }
+
+    private static final class SnapshotReleaser implements Runnable {
+        @NonNull
+        private final AtomicLong ptr;
+        @NonNull
+        private final NativeDB db;
+
+        private SnapshotReleaser(@NonNull AtomicLong ptr, @NonNull NativeDB db) {
+            this.ptr = ptr;
+            this.db = db;
+        }
+
+        @Override
+        public void run() {
+            this.db.releaseSnapshot(this.ptr);
         }
     }
 

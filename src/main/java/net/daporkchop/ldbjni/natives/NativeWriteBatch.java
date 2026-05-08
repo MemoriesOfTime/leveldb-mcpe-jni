@@ -22,17 +22,15 @@ package net.daporkchop.ldbjni.natives;
 
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufAllocator;
-import io.netty.buffer.UnpooledByteBufAllocator;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import net.daporkchop.ldbjni.direct.DirectWriteBatch;
 import net.daporkchop.lib.unsafe.PCleaner;
-import org.iq80.leveldb.WriteBatch;
 
 import java.io.IOException;
 import java.util.concurrent.atomic.AtomicLong;
 
-import static net.daporkchop.lib.common.util.PValidation.checkState;
+import static net.daporkchop.lib.common.util.PValidation.*;
 
 /**
  * @author DaPorkchop_
@@ -47,6 +45,7 @@ final class NativeWriteBatch implements DirectWriteBatch {
     private final PCleaner cleaner;
 
     private int approximateSize;
+    private int size;
 
     public NativeWriteBatch(long ptr, @NonNull NativeDB db) {
         this.ptr = new AtomicLong(ptr);
@@ -55,58 +54,79 @@ final class NativeWriteBatch implements DirectWriteBatch {
     }
 
     @Override
-    public int getApproximateSize() {
-        return approximateSize;
+    public synchronized int getApproximateSize() {
+        this.ptr();
+        return this.approximateSize;
     }
 
     @Override
-    public int size() {
-        return size0(this.ptr.get());
+    public synchronized int size() {
+        this.ptr();
+        return this.size;
     }
 
-    private native int size0(long ptr);
+    private long ptr() {
+        long ptr = this.ptr.get();
+        checkState(ptr != 0L, "NativeWriteBatch has already been closed!");
+        return ptr;
+    }
+
+    private void countPut(int keyLength, int valueLength) {
+        this.size++;
+        this.approximateSize += HEADER_SIZE + keyLength + valueLength;
+    }
+
+    private void countDelete(int keyLength) {
+        this.size++;
+        this.approximateSize += 6 + keyLength;
+    }
 
     @Override
     public synchronized DirectWriteBatch put(@NonNull byte[] key, @NonNull byte[] value) {
-        this.put0HH(this.ptr.get(), key, 0, key.length, value, 0, value.length);
-        approximateSize += HEADER_SIZE + key.length + value.length;
+        this.put0HH(this.ptr(), key, 0, key.length, value, 0, value.length);
+        this.countPut(key.length, value.length);
         return this;
     }
 
     @Override
     public synchronized DirectWriteBatch put(@NonNull ByteBuf key, @NonNull ByteBuf value) {
-        approximateSize += HEADER_SIZE + key.readableBytes() + value.readableBytes();
+        int keyLength = key.readableBytes();
+        int valueLength = value.readableBytes();
         if (key.hasArray()) {
             if (value.hasArray()) {
                 this.put0HH(
-                        this.ptr.get(),
-                        key.array(), key.arrayOffset() + key.readerIndex(), key.readableBytes(),
-                        value.array(), value.arrayOffset() + value.readerIndex(), value.readableBytes());
+                        this.ptr(),
+                        key.array(), key.arrayOffset() + key.readerIndex(), keyLength,
+                        value.array(), value.arrayOffset() + value.readerIndex(), valueLength);
+                this.countPut(keyLength, valueLength);
                 return this;
             } else if (value.hasMemoryAddress()) {
                 this.put0HD(
-                        this.ptr.get(),
-                        key.array(), key.arrayOffset() + key.readerIndex(), key.readableBytes(),
-                        value.memoryAddress() + value.readerIndex(), value.readableBytes());
+                        this.ptr(),
+                        key.array(), key.arrayOffset() + key.readerIndex(), keyLength,
+                        value.memoryAddress() + value.readerIndex(), valueLength);
+                this.countPut(keyLength, valueLength);
                 return this;
             }
         } else if (key.hasMemoryAddress())    {
             if (value.hasArray()) {
                 this.put0DH(
-                        this.ptr.get(),
-                        key.memoryAddress() + key.readerIndex(), key.readableBytes(),
-                        value.array(), value.arrayOffset() + value.readerIndex(), value.readableBytes());
+                        this.ptr(),
+                        key.memoryAddress() + key.readerIndex(), keyLength,
+                        value.array(), value.arrayOffset() + value.readerIndex(), valueLength);
+                this.countPut(keyLength, valueLength);
                 return this;
             } else if (value.hasMemoryAddress()) {
                 this.put0DD(
-                        this.ptr.get(),
-                        key.memoryAddress() + key.readerIndex(), key.readableBytes(),
-                        value.memoryAddress() + value.readerIndex(), value.readableBytes());
+                        this.ptr(),
+                        key.memoryAddress() + key.readerIndex(), keyLength,
+                        value.memoryAddress() + value.readerIndex(), valueLength);
+                this.countPut(keyLength, valueLength);
                 return this;
             }
         }
         if (!key.hasArray() && !key.hasMemoryAddress()) {
-            ByteBuf keyCopy = ByteBufAllocator.DEFAULT.buffer(key.readableBytes(), key.readableBytes());
+            ByteBuf keyCopy = ByteBufAllocator.DEFAULT.buffer(keyLength, keyLength);
             try {
                 checkState(keyCopy.hasArray() || keyCopy.hasMemoryAddress(), keyCopy);
                 key.getBytes(key.readerIndex(), keyCopy);
@@ -115,7 +135,7 @@ final class NativeWriteBatch implements DirectWriteBatch {
                 keyCopy.release();
             }
         } else if (!value.hasArray() && !value.hasMemoryAddress()) {
-            ByteBuf valueCopy = ByteBufAllocator.DEFAULT.buffer(value.readableBytes(), value.readableBytes());
+            ByteBuf valueCopy = ByteBufAllocator.DEFAULT.buffer(valueLength, valueLength);
             try {
                 checkState(valueCopy.hasArray() || valueCopy.hasMemoryAddress(), valueCopy);
                 value.getBytes(value.readerIndex(), valueCopy);
@@ -139,24 +159,26 @@ final class NativeWriteBatch implements DirectWriteBatch {
 
     @Override
     public synchronized DirectWriteBatch delete(@NonNull byte[] key) {
-        this.delete0H(this.ptr.get(), key, 0, key.length);
-        approximateSize += 6 + key.length;
+        this.delete0H(this.ptr(), key, 0, key.length);
+        this.countDelete(key.length);
         return this;
     }
 
     @Override
     public synchronized DirectWriteBatch delete(@NonNull ByteBuf key) {
-        approximateSize += 6 + key.readableBytes();
+        int keyLength = key.readableBytes();
         if (key.hasArray()) {
             this.delete0H(
-                    this.ptr.get(),
-                    key.array(), key.arrayOffset() + key.readerIndex(), key.readableBytes());
+                    this.ptr(),
+                    key.array(), key.arrayOffset() + key.readerIndex(), keyLength);
+            this.countDelete(keyLength);
         } else if (key.hasMemoryAddress()) {
             this.delete0D(
-                    this.ptr.get(),
-                    key.memoryAddress() + key.readerIndex(), key.readableBytes());
+                    this.ptr(),
+                    key.memoryAddress() + key.readerIndex(), keyLength);
+            this.countDelete(keyLength);
         } else {
-            ByteBuf keyCopy = ByteBufAllocator.DEFAULT.buffer(key.readableBytes(), key.readableBytes());
+            ByteBuf keyCopy = ByteBufAllocator.DEFAULT.buffer(keyLength, keyLength);
             try {
                 checkState(keyCopy.hasArray() || keyCopy.hasMemoryAddress(), keyCopy);
                 key.getBytes(key.readerIndex(), keyCopy);

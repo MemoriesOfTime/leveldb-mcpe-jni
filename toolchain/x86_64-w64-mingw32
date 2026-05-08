@@ -5,9 +5,20 @@ export CFLAGS		:=	$(CFLAGS)
 export CXXFLAGS		:=	$(CXXFLAGS)
 export LDFLAGS		:=	$(LDFLAGS) -static-libgcc -static-libstdc++ -Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive
 
-export CC		:=	x86_64-w64-mingw32-gcc-posix
-export CXX		:=	x86_64-w64-mingw32-g++-posix
-export LD		:=	x86_64-w64-mingw32-g++-posix
-export STRIP	:=	x86_64-w64-mingw32-strip
+X86_64_W64_MINGW32_CC		?=	$(shell command -v x86_64-w64-mingw32-gcc-posix 2>/dev/null || command -v x86_64-w64-mingw32-gcc 2>/dev/null || echo x86_64-w64-mingw32-gcc-posix)
+X86_64_W64_MINGW32_CXX		?=	$(shell command -v x86_64-w64-mingw32-g++-posix 2>/dev/null || command -v x86_64-w64-mingw32-g++ 2>/dev/null || echo x86_64-w64-mingw32-g++-posix)
+X86_64_W64_MINGW32_AR		?=	$(shell command -v x86_64-w64-mingw32-ar 2>/dev/null || echo x86_64-w64-mingw32-ar)
+X86_64_W64_MINGW32_RANLIB	?=	$(shell command -v x86_64-w64-mingw32-ranlib 2>/dev/null || echo x86_64-w64-mingw32-ranlib)
+X86_64_W64_MINGW32_STRIP	?=	$(shell command -v x86_64-w64-mingw32-strip 2>/dev/null || echo x86_64-w64-mingw32-strip)
+
+export CC		:=	$(X86_64_W64_MINGW32_CC)
+export CXX		:=	$(X86_64_W64_MINGW32_CXX)
+export LD		:=	$(X86_64_W64_MINGW32_CXX)
+export AR		:=	$(X86_64_W64_MINGW32_AR)
+export ARFLAGS	:=	rcs
+export RANLIB	:=	$(X86_64_W64_MINGW32_RANLIB)
+export STRIP	:=	$(X86_64_W64_MINGW32_STRIP)
+export CHOST	:=	x86_64-w64-mingw32
+export ZLIB_CONFIGURE_FLAGS	:=	--uname=mingw
 
 export EXT	:=	dll

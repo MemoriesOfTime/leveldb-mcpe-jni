@@ -25,19 +25,26 @@ plugins {
 ext {
     // General configuration
     javaVersion = JavaVersion.VERSION_11
-    programVersion = '0.0.10'
+    programVersion = '0.0.11-SNAPSHOT'
 
     // Dependency versions
-    junitVersion = '4.13.1'
-    lombokVersion = '1.18.20'
-    leveldbVersion = '1.0.1'
-    nettyVersion= '4.1.101.Final'
-    porklibVersion = '0.5.8-SNAPSHOT'
+    junitVersion = '4.13.2'
+    lombokVersion = '1.18.46'
+    leveldbVersion = '1.1.0'
+    guavaVersion = '32.0.1-jre'
+    nettyVersion = '4.2.12.Final'
+    porklibVersion = '0.5.9-SNAPSHOT'
     snappyVersion = '0.5'
 }
 
-group = 'cn.lanink.leveldb'
+group = 'dev.mot.leveldb'
 version = programVersion
+
+def mavenDeployUsername = findProperty('MAVEN_DEPLOY_USERNAME') ?: System.getenv('MAVEN_DEPLOY_USERNAME')
+def mavenDeployPassword = findProperty('MAVEN_DEPLOY_PASSWORD') ?: System.getenv('MAVEN_DEPLOY_PASSWORD')
+def isSnapshotVersion = version.toString().endsWith('SNAPSHOT')
+def publishRepositoryName = isSnapshotVersion ? 'mot-repo-snapshot' : 'mot-repo-release'
+def publishRepositoryUrl = isSnapshotVersion ? 'https://repo.mot.dev/repository/maven-snapshots/' : 'https://repo.mot.dev/repository/maven-releases/'
 
 java {
     sourceCompatibility = javaVersion
@@ -48,10 +55,18 @@ tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
 }
 
+tasks.withType(Test).configureEach {
+    jvmArgs '--add-opens=java.base/jdk.internal.misc=ALL-UNNAMED'
+}
+
 repositories {
     maven {
-        name = 'MemoriesOfTime'
-        url = 'https://repo.lanink.cn/repository/maven-public/'
+        name = 'mot-repo-release'
+        url = 'https://repo.mot.dev/repository/maven-releases/'
+    }
+    maven {
+        name = 'mot-repo-snapshot'
+        url = 'https://repo.mot.dev/repository/maven-snapshots/'
     }
     maven {
         name = 'DaPorkchop_'
@@ -71,6 +86,7 @@ dependencies {
     }
     implementation "com.hivemc.leveldb:leveldb-api:$leveldbVersion"
     implementation "com.hivemc.leveldb:leveldb:$leveldbVersion"
+    implementation "com.google.guava:guava:$guavaVersion"
     implementation "org.iq80.snappy:snappy:$snappyVersion"
 
     testImplementation ("net.daporkchop.lib:encoding:$porklibVersion") {
@@ -86,18 +102,20 @@ dependencies {
 
 tasks.register('sourceJar', Jar) {
     from sourceSets.main.allSource
+    archiveClassifier = 'sources'
 }
 
 publishing {
     repositories {
-        if (MOT_MAVEN_USERNAME != null && MOT_MAVEN_PASSWORD != null)
-        maven {
-            credentials {
-                username = MOT_MAVEN_USERNAME
-                password = MOT_MAVEN_PASSWORD
+        if (mavenDeployUsername && mavenDeployPassword) {
+            maven {
+                credentials {
+                    username = mavenDeployUsername
+                    password = mavenDeployPassword
+                }
+                name = publishRepositoryName
+                url = publishRepositoryUrl
             }
-            name = 'repo-lanink-cn'
-            url = version.endsWith('SNAPSHOT') ? 'https://repo.lanink.cn/repository/maven-snapshots/' : 'https://repo.lanink.cn/repository/maven-releases/'
         }
     }
 
@@ -109,9 +127,7 @@ publishing {
 
             from components.java
 
-            artifact sourceJar {
-                classifier 'sources'
-            }
+            artifact sourceJar
         }
     }
 }

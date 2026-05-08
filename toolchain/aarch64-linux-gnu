@@ -10,9 +10,20 @@ export CXXFLAGS		:=	$(CXXFLAGS)
 export LDFLAGS		:=	$(LDFLAGS)
 endif
 
-export CC		:= aarch64-linux-gnu-gcc
-export CXX		:= aarch64-linux-gnu-g++
-export LD		:= aarch64-linux-gnu-g++
-export STRIP	:= aarch64-linux-gnu-strip
+AARCH64_LINUX_GNU_CC		?=	$(shell command -v aarch64-linux-gnu-gcc 2>/dev/null || command -v aarch64-unknown-linux-gnu-gcc 2>/dev/null || echo aarch64-linux-gnu-gcc)
+AARCH64_LINUX_GNU_CXX		?=	$(shell command -v aarch64-linux-gnu-g++ 2>/dev/null || command -v aarch64-unknown-linux-gnu-g++ 2>/dev/null || echo aarch64-linux-gnu-g++)
+AARCH64_LINUX_GNU_AR		?=	$(shell command -v aarch64-linux-gnu-ar 2>/dev/null || command -v aarch64-unknown-linux-gnu-ar 2>/dev/null || echo aarch64-linux-gnu-ar)
+AARCH64_LINUX_GNU_RANLIB	?=	$(shell command -v aarch64-linux-gnu-ranlib 2>/dev/null || command -v aarch64-unknown-linux-gnu-ranlib 2>/dev/null || echo aarch64-linux-gnu-ranlib)
+AARCH64_LINUX_GNU_STRIP		?=	$(shell command -v aarch64-linux-gnu-strip 2>/dev/null || command -v aarch64-unknown-linux-gnu-strip 2>/dev/null || echo aarch64-linux-gnu-strip)
+
+export CC		:= $(AARCH64_LINUX_GNU_CC)
+export CXX		:= $(AARCH64_LINUX_GNU_CXX)
+export LD		:= $(AARCH64_LINUX_GNU_CXX)
+export AR		:= $(AARCH64_LINUX_GNU_AR)
+export ARFLAGS	:= rcs
+export RANLIB	:= $(AARCH64_LINUX_GNU_RANLIB)
+export STRIP	:= $(AARCH64_LINUX_GNU_STRIP)
+export CHOST	:= aarch64-linux-gnu
+export ZLIB_CONFIGURE_FLAGS	:= --uname=Linux
 
 export EXT	:=	so

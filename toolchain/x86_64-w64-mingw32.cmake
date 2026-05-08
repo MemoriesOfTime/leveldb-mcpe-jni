@@ -1,10 +1,19 @@
 SET(CMAKE_SYSTEM_NAME Windows)
+set(CMAKE_SYSTEM_PROCESSOR x86_64)
 
 set(COMPILER_PREFIX "x86_64-w64-mingw32")
 
 find_program(CMAKE_RC_COMPILER NAMES ${COMPILER_PREFIX}-windres)
-find_program(CMAKE_C_COMPILER NAMES ${COMPILER_PREFIX}-gcc-posix)
-find_program(CMAKE_CXX_COMPILER NAMES ${COMPILER_PREFIX}-g++-posix)
+find_program(CMAKE_C_COMPILER NAMES ${COMPILER_PREFIX}-gcc-posix ${COMPILER_PREFIX}-gcc)
+find_program(CMAKE_CXX_COMPILER NAMES ${COMPILER_PREFIX}-g++-posix ${COMPILER_PREFIX}-g++)
+find_program(CMAKE_AR NAMES ${COMPILER_PREFIX}-ar)
+find_program(CMAKE_RANLIB NAMES ${COMPILER_PREFIX}-ranlib)
+if(NOT CMAKE_C_COMPILER OR NOT CMAKE_CXX_COMPILER)
+    message(FATAL_ERROR "Missing x86_64 MinGW compiler. Install ${COMPILER_PREFIX}-gcc/g++ or ${COMPILER_PREFIX}-gcc-posix/g++-posix.")
+endif()
+if(NOT CMAKE_AR OR NOT CMAKE_RANLIB)
+    message(FATAL_ERROR "Missing x86_64 MinGW archive tools. Install ${COMPILER_PREFIX}-ar and ${COMPILER_PREFIX}-ranlib.")
+endif()
 
 SET(USER_ROOT_PATH)
 SET(CMAKE_FIND_ROOT_PATH  /usr/${COMPILER_PREFIX} ${USER_ROOT_PATH})

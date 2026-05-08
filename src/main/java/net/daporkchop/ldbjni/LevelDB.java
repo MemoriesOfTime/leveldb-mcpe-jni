@@ -21,7 +21,8 @@
 package net.daporkchop.ldbjni;
 
 import lombok.experimental.UtilityClass;
-import net.daporkchop.lib.natives.FeatureBuilder;
+
+import java.lang.reflect.Constructor;
 
 /**
  * @author DaPorkchop_
@@ -34,8 +35,28 @@ public class LevelDB {
      * This will always be an instance of {@link net.daporkchop.ldbjni.natives.NativeDBProvider} if possible, and will fall back to
      * {@link net.daporkchop.ldbjni.java.JavaDBProvider} otherwise.
      */
-    public final DBProvider PROVIDER = FeatureBuilder.<DBProvider>create(LevelDB.class)
-            .addNative("net.daporkchop.ldbjni.natives.NativeDBProvider")
-            .addJava("net.daporkchop.ldbjni.java.JavaDBProvider")
-            .build();
+    public final DBProvider PROVIDER = loadProvider();
+
+    private DBProvider loadProvider() {
+        try {
+            NativeLibraryLoader.loadNativeLibrary("", "net.daporkchop.ldbjni.natives.NativeDBProvider", LevelDB.class.getClassLoader());
+            return instantiate("net.daporkchop.ldbjni.natives.NativeDBProvider");
+        } catch (Throwable t) {
+            if (Boolean.parseBoolean(System.getProperty("porklib.native.printStackTraces", "false"))) {
+                t.printStackTrace();
+            }
+        }
+        return instantiate("net.daporkchop.ldbjni.java.JavaDBProvider");
+    }
+
+    private DBProvider instantiate(String className) {
+        try {
+            Class<?> clazz = Class.forName(className, false, LevelDB.class.getClassLoader());
+            Constructor<?> constructor = clazz.getDeclaredConstructor();
+            constructor.setAccessible(true);
+            return (DBProvider) constructor.newInstance();
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException("Unable to create DB provider: " + className, e);
+        }
+    }
 }

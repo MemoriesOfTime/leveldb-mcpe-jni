@@ -19,5 +19,6 @@ test_out/
 /**/*.so
 /**/*.dll
 /**/*.o
+/**/*.dylib
 
 *.tar.gz

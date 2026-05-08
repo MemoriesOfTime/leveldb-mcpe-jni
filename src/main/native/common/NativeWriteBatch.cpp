@@ -2,18 +2,6 @@
 
 extern "C" {
 
-JNIEXPORT int JNICALL Java_net_daporkchop_ldbjni_natives_NativeWriteBatch_size0
-  (JNIEnv* env, jobject obj, jlong ptr)  {
-    auto writeBatch = (leveldb::WriteBatch*) ptr;
-
-    if (writeBatch == nullptr)  {
-        throwISE(env, "NativeWriteBatch has already been closed!");
-        return 0;
-    }
-
-    return writeBatch->ApproximateSize();
-}
-
 JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeWriteBatch_put0HH
   (JNIEnv* env, jobject obj, jlong ptr, jbyteArray key, jint keyOff, jint keyLen, jbyteArray value, jint valueOff, jint valueLen)  {
     auto writeBatch = (leveldb::WriteBatch*) ptr;
@@ -46,7 +34,7 @@ JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeWriteBatch_put0H
 }
 
 JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeWriteBatch_put0HD
-  (JNIEnv* env, jobject obj, jlong ptr, jbyteArray key, jint keyOff, jint keyLen, jlong valueAddr, jint valueOff, jint valueLen)  {
+  (JNIEnv* env, jobject obj, jlong ptr, jbyteArray key, jint keyOff, jint keyLen, jlong valueAddr, jint valueLen)  {
     auto writeBatch = (leveldb::WriteBatch*) ptr;
 
     if (writeBatch == nullptr)  {

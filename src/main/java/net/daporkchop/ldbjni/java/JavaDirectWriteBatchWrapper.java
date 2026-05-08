@@ -40,7 +40,7 @@ final class JavaDirectWriteBatchWrapper implements DirectWriteBatch {
 
     @Override
     public int getApproximateSize() {
-        return this.delegate.size();
+        return this.delegate.getApproximateSize();
     }
 
     @Override

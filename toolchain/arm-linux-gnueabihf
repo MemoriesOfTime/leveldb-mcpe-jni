@@ -2,9 +2,20 @@ export CFLAGS		:=	$(CFLAGS)
 export CXXFLAGS		:=	$(CXXFLAGS)
 export LDFLAGS		:=	$(LDFLAGS)
 
-export CC		:= arm-linux-gnueabihf-gcc
-export CXX		:= arm-linux-gnueabihf-g++
-export LD		:= arm-linux-gnueabihf-g++
-export STRIP	:= arm-linux-gnueabihf-strip
+ARM_LINUX_GNUEABIHF_CC		?=	$(shell command -v arm-linux-gnueabihf-gcc 2>/dev/null || command -v arm-unknown-linux-gnueabihf-gcc 2>/dev/null || echo arm-linux-gnueabihf-gcc)
+ARM_LINUX_GNUEABIHF_CXX		?=	$(shell command -v arm-linux-gnueabihf-g++ 2>/dev/null || command -v arm-unknown-linux-gnueabihf-g++ 2>/dev/null || echo arm-linux-gnueabihf-g++)
+ARM_LINUX_GNUEABIHF_AR		?=	$(shell command -v arm-linux-gnueabihf-ar 2>/dev/null || command -v arm-unknown-linux-gnueabihf-ar 2>/dev/null || echo arm-linux-gnueabihf-ar)
+ARM_LINUX_GNUEABIHF_RANLIB	?=	$(shell command -v arm-linux-gnueabihf-ranlib 2>/dev/null || command -v arm-unknown-linux-gnueabihf-ranlib 2>/dev/null || echo arm-linux-gnueabihf-ranlib)
+ARM_LINUX_GNUEABIHF_STRIP	?=	$(shell command -v arm-linux-gnueabihf-strip 2>/dev/null || command -v arm-unknown-linux-gnueabihf-strip 2>/dev/null || echo arm-linux-gnueabihf-strip)
+
+export CC		:= $(ARM_LINUX_GNUEABIHF_CC)
+export CXX		:= $(ARM_LINUX_GNUEABIHF_CXX)
+export LD		:= $(ARM_LINUX_GNUEABIHF_CXX)
+export AR		:= $(ARM_LINUX_GNUEABIHF_AR)
+export ARFLAGS	:= rcs
+export RANLIB	:= $(ARM_LINUX_GNUEABIHF_RANLIB)
+export STRIP	:= $(ARM_LINUX_GNUEABIHF_STRIP)
+export CHOST	:= arm-unknown-linux-gnueabihf
+export ZLIB_CONFIGURE_FLAGS	:= --uname=Linux
 
 export EXT	:=	so

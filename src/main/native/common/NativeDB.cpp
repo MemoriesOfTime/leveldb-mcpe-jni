@@ -7,6 +7,27 @@ static jmethodID get0_finalID;
 static jmethodID getInto0_finalID;
 static jmethodID getZeroCopy0_finalID;
 
+static void loadReadOptions(JNIEnv* env, jobject obj, leveldb::ReadOptions& readOptions,
+                            jboolean verifyChecksums, jboolean fillCache, jlong snapshot) {
+    readOptions.verify_checksums = verifyChecksums;
+    readOptions.fill_cache = fillCache;
+    readOptions.snapshot = (leveldb::Snapshot*) snapshot;
+    readOptions.decompress_allocator = (leveldb::DecompressAllocator*) env->GetLongField(obj, dcaID);
+}
+
+static jbyteArray copySlice(JNIEnv* env, const leveldb::Slice& slice) {
+    jbyteArray out = env->NewByteArray(static_cast<jsize>(slice.size()));
+    if (out != nullptr) {
+        env->SetByteArrayRegion(out, 0, static_cast<jsize>(slice.size()), reinterpret_cast<const jbyte*>(slice.data()));
+    }
+    return out;
+}
+
+static bool checkIteratorStatus(JNIEnv* env, leveldb::Iterator* iterator) {
+    leveldb::Status status = iterator->status();
+    return checkException(env, status);
+}
+
 extern "C" {
 
 JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_init
@@ -60,10 +81,7 @@ JNIEXPORT jbyteArray JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_get0
     auto db = (leveldb::DB*) env->GetLongField(obj, dbID);
 
     leveldb::ReadOptions readOptions;
-    readOptions.verify_checksums = verifyChecksums;
-    readOptions.fill_cache = fillCache;
-    readOptions.snapshot = (leveldb::Snapshot*) snapshot;
-    readOptions.decompress_allocator = (leveldb::DecompressAllocator*) env->GetLongField(obj, dcaID);
+    loadReadOptions(env, obj, readOptions, verifyChecksums, fillCache, snapshot);
 
     int keyLength = env->GetArrayLength(key);
     auto keyPtr = (char*) env->GetPrimitiveArrayCritical(key, nullptr);
@@ -118,13 +136,162 @@ JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_writeBatch0
     checkException(env, status);
 }
 
+JNIEXPORT jlong JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_getSnapshot0
+  (JNIEnv* env, jobject obj)  {
+    auto db = (leveldb::DB*) env->GetLongField(obj, dbID);
+
+    return (jlong) db->GetSnapshot();
+}
+
+JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_releaseSnapshot0
+  (JNIEnv* env, jobject obj, jlong snapshot)  {
+    if ((leveldb::Snapshot*) snapshot == nullptr)  {
+        throwISE(env, "NativeSnapshot has already been closed!");
+        return;
+    }
+
+    auto db = (leveldb::DB*) env->GetLongField(obj, dbID);
+    db->ReleaseSnapshot((leveldb::Snapshot*) snapshot);
+}
+
+JNIEXPORT jlong JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_iterator0
+  (JNIEnv* env, jobject obj, jboolean verifyChecksums, jboolean fillCache, jlong snapshot)  {
+    auto db = (leveldb::DB*) env->GetLongField(obj, dbID);
+
+    leveldb::ReadOptions readOptions;
+    loadReadOptions(env, obj, readOptions, verifyChecksums, fillCache, snapshot);
+
+    leveldb::Iterator* iterator = db->NewIterator(readOptions);
+    if (checkIteratorStatus(env, iterator)) {
+        delete iterator;
+        return (jlong) nullptr;
+    }
+
+    return (jlong) iterator;
+}
+
+JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_releaseIterator0
+  (JNIEnv* env, jclass cla, jlong iterator)  {
+    if ((leveldb::Iterator*) iterator == nullptr)  {
+        throwISE(env, "NativeIterator has already been closed!");
+        return;
+    }
+
+    delete (leveldb::Iterator*) iterator;
+}
+
+JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_iteratorSeekToFirst0
+  (JNIEnv* env, jclass cla, jlong iterator)  {
+    auto it = (leveldb::Iterator*) iterator;
+    it->SeekToFirst();
+    checkIteratorStatus(env, it);
+}
+
+JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_iteratorSeekToLast0
+  (JNIEnv* env, jclass cla, jlong iterator)  {
+    auto it = (leveldb::Iterator*) iterator;
+    it->SeekToLast();
+    checkIteratorStatus(env, it);
+}
+
+JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_iteratorSeek0
+  (JNIEnv* env, jclass cla, jlong iterator, jbyteArray target)  {
+    int targetLength = env->GetArrayLength(target);
+    auto targetPtr = (char*) env->GetPrimitiveArrayCritical(target, nullptr);
+    if (!targetPtr)    {
+        throwISE(env, "Unable to pin target array");
+        return;
+    }
+    leveldb::Slice targetSlice(targetPtr, targetLength);
+
+    auto it = (leveldb::Iterator*) iterator;
+    it->Seek(targetSlice);
+
+    env->ReleasePrimitiveArrayCritical(target, targetPtr, 0);
+
+    checkIteratorStatus(env, it);
+}
+
+JNIEXPORT jboolean JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_iteratorValid0
+  (JNIEnv* env, jclass cla, jlong iterator)  {
+    return (jboolean) ((leveldb::Iterator*) iterator)->Valid();
+}
+
+JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_iteratorNext0
+  (JNIEnv* env, jclass cla, jlong iterator)  {
+    auto it = (leveldb::Iterator*) iterator;
+    it->Next();
+    checkIteratorStatus(env, it);
+}
+
+JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_iteratorPrev0
+  (JNIEnv* env, jclass cla, jlong iterator)  {
+    auto it = (leveldb::Iterator*) iterator;
+    it->Prev();
+    checkIteratorStatus(env, it);
+}
+
+JNIEXPORT jbyteArray JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_iteratorKey0
+  (JNIEnv* env, jclass cla, jlong iterator)  {
+    auto it = (leveldb::Iterator*) iterator;
+    return copySlice(env, it->key());
+}
+
+JNIEXPORT jbyteArray JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_iteratorValue0
+  (JNIEnv* env, jclass cla, jlong iterator)  {
+    auto it = (leveldb::Iterator*) iterator;
+    return copySlice(env, it->value());
+}
+
+JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_checkIteratorStatus0
+  (JNIEnv* env, jclass cla, jlong iterator)  {
+    checkIteratorStatus(env, (leveldb::Iterator*) iterator);
+}
+
+JNIEXPORT jlong JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_getApproximateSize0
+  (JNIEnv* env, jobject obj, jbyteArray start, jbyteArray limit)  {
+    auto db = (leveldb::DB*) env->GetLongField(obj, dbID);
+
+    int startLength = env->GetArrayLength(start);
+    std::string startBytes(startLength, '\0');
+    if (startLength > 0) {
+        env->GetByteArrayRegion(start, 0, startLength, reinterpret_cast<jbyte*>(&startBytes[0]));
+    }
+
+    int limitLength = env->GetArrayLength(limit);
+    std::string limitBytes(limitLength, '\0');
+    if (limitLength > 0) {
+        env->GetByteArrayRegion(limit, 0, limitLength, reinterpret_cast<jbyte*>(&limitBytes[0]));
+    }
+
+    leveldb::Range range(
+        leveldb::Slice(startBytes.data(), startBytes.size()),
+        leveldb::Slice(limitBytes.data(), limitBytes.size()));
+    uint64_t size = 0L;
+    db->GetApproximateSizes(&range, 1, &size);
+    return (jlong) size;
+}
+
+JNIEXPORT jstring JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_getProperty0
+  (JNIEnv* env, jobject obj, jstring name)  {
+    auto db = (leveldb::DB*) env->GetLongField(obj, dbID);
+
+    const char* name_native = env->GetStringUTFChars(name, nullptr);
+    leveldb::Slice property(name_native, env->GetStringUTFLength(name));
+    std::string value;
+    bool found = db->GetProperty(property, &value);
+    env->ReleaseStringUTFChars(name, name_native);
+
+    return found ? env->NewStringUTF(value.c_str()) : nullptr;
+}
+
 JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_compactRange0
   (JNIEnv* env, jobject obj, jbyteArray start, jbyteArray limit)  {
     auto db = (leveldb::DB*) env->GetLongField(obj, dbID);
 
-    char* startRaw;
+    char* startRaw = nullptr;
     leveldb::Slice startSlice;
-    char* limitRaw;
+    char* limitRaw = nullptr;
     leveldb::Slice limitSlice;
 
     if (start != nullptr)   {
@@ -143,10 +310,10 @@ JNIEXPORT void JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_compactRange0
     db->CompactRange(start == nullptr ? nullptr : &startSlice, limit == nullptr ? nullptr : &limitSlice);
 
     if (start != nullptr)   {
-        delete startRaw;
+        delete[] startRaw;
     }
     if (limit != nullptr)   {
-        delete limitRaw;
+        delete[] limitRaw;
     }
 }
 
@@ -155,10 +322,7 @@ JNIEXPORT jobject JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_get0H
     auto db = (leveldb::DB*) env->GetLongField(obj, dbID);
 
     leveldb::ReadOptions readOptions;
-    readOptions.verify_checksums = verifyChecksums;
-    readOptions.fill_cache = fillCache;
-    readOptions.snapshot = (leveldb::Snapshot*) snapshot;
-    readOptions.decompress_allocator = (leveldb::DecompressAllocator*) env->GetLongField(obj, dcaID);
+    loadReadOptions(env, obj, readOptions, verifyChecksums, fillCache, snapshot);
 
     auto keyPtr = (char*) env->GetPrimitiveArrayCritical(key, nullptr);
     if (!keyPtr)    {
@@ -187,10 +351,7 @@ JNIEXPORT jobject JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_get0D
     auto db = (leveldb::DB*) env->GetLongField(obj, dbID);
 
     leveldb::ReadOptions readOptions;
-    readOptions.verify_checksums = verifyChecksums;
-    readOptions.fill_cache = fillCache;
-    readOptions.snapshot = (leveldb::Snapshot*) snapshot;
-    readOptions.decompress_allocator = (leveldb::DecompressAllocator*) env->GetLongField(obj, dcaID);
+    loadReadOptions(env, obj, readOptions, verifyChecksums, fillCache, snapshot);
 
     leveldb::Slice keySlice((char*) keyAddr, keyLen);
 
@@ -212,10 +373,7 @@ JNIEXPORT jboolean JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_getInto0H
     auto db = (leveldb::DB*) env->GetLongField(obj, dbID);
 
     leveldb::ReadOptions readOptions;
-    readOptions.verify_checksums = verifyChecksums;
-    readOptions.fill_cache = fillCache;
-    readOptions.snapshot = (leveldb::Snapshot*) snapshot;
-    readOptions.decompress_allocator = (leveldb::DecompressAllocator*) env->GetLongField(obj, dcaID);
+    loadReadOptions(env, obj, readOptions, verifyChecksums, fillCache, snapshot);
 
     auto keyPtr = (char*) env->GetPrimitiveArrayCritical(key, nullptr);
     if (!keyPtr)    {
@@ -245,10 +403,7 @@ JNIEXPORT jboolean JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_getInto0D
     auto db = (leveldb::DB*) env->GetLongField(obj, dbID);
 
     leveldb::ReadOptions readOptions;
-    readOptions.verify_checksums = verifyChecksums;
-    readOptions.fill_cache = fillCache;
-    readOptions.snapshot = (leveldb::Snapshot*) snapshot;
-    readOptions.decompress_allocator = (leveldb::DecompressAllocator*) env->GetLongField(obj, dcaID);
+    loadReadOptions(env, obj, readOptions, verifyChecksums, fillCache, snapshot);
 
     leveldb::Slice keySlice((char*) keyAddr, keyLen);
 
@@ -271,10 +426,7 @@ JNIEXPORT jobject JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_getZeroCop
     auto db = (leveldb::DB*) env->GetLongField(obj, dbID);
 
     leveldb::ReadOptions readOptions;
-    readOptions.verify_checksums = verifyChecksums;
-    readOptions.fill_cache = fillCache;
-    readOptions.snapshot = (leveldb::Snapshot*) snapshot;
-    readOptions.decompress_allocator = (leveldb::DecompressAllocator*) env->GetLongField(obj, dcaID);
+    loadReadOptions(env, obj, readOptions, verifyChecksums, fillCache, snapshot);
 
     auto keyPtr = (char*) env->GetPrimitiveArrayCritical(key, nullptr);
     if (!keyPtr)    {
@@ -301,10 +453,7 @@ JNIEXPORT jobject JNICALL Java_net_daporkchop_ldbjni_natives_NativeDB_getZeroCop
     auto db = (leveldb::DB*) env->GetLongField(obj, dbID);
 
     leveldb::ReadOptions readOptions;
-    readOptions.verify_checksums = verifyChecksums;
-    readOptions.fill_cache = fillCache;
-    readOptions.snapshot = (leveldb::Snapshot*) snapshot;
-    readOptions.decompress_allocator = (leveldb::DecompressAllocator*) env->GetLongField(obj, dcaID);
+    loadReadOptions(env, obj, readOptions, verifyChecksums, fillCache, snapshot);
 
     leveldb::Slice keySlice((char*) keyAddr, keyLen);
 
