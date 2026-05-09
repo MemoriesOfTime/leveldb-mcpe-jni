@@ -22,3 +22,6 @@ test_out/
 /**/*.dylib
 
 *.tar.gz
+
+# credentials
+gradle.properties

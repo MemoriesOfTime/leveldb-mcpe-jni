@@ -32,7 +32,7 @@ ext {
     lombokVersion = '1.18.46'
     leveldbVersion = '1.1.0'
     guavaVersion = '32.0.1-jre'
-    nettyVersion = '4.2.12.Final'
+    nettyVersion = '4.2.13.Final'
     porklibVersion = '0.5.9-SNAPSHOT'
     snappyVersion = '0.5'
 }
