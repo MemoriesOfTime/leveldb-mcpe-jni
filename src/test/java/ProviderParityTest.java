@@ -36,6 +36,7 @@ import org.iq80.leveldb.Options;
 import org.iq80.leveldb.Range;
 import org.iq80.leveldb.ReadOptions;
 import org.iq80.leveldb.Snapshot;
+import org.iq80.leveldb.WriteBatch;
 import org.iq80.leveldb.WriteOptions;
 import org.junit.Before;
 import org.junit.BeforeClass;
@@ -183,22 +184,30 @@ public class ProviderParityTest {
                 db.put(bytes(3), bytes(103));
 
                 try (DirectWriteBatch batch = db.createWriteBatch()) {
-                    checkState(batch.size() == 0, provider.name);
-                    checkState(batch.getApproximateSize() == 0, provider.name);
+                    WriteBatch writeBatch = batch;
+                    this.checkWriteBatchStats(writeBatch, 0, 0, provider.name);
 
-                    batch.put(bytes(10), bytes(110));
+                    checkState(writeBatch.put(bytes(10), bytes(110)) == batch, provider.name);
+                    this.checkWriteBatchStats(writeBatch, 1, 20, provider.name);
                     this.batchPut(batch, this.heap(11), this.heap(111));
+                    this.checkWriteBatchStats(writeBatch, 2, 40, provider.name);
                     this.batchPut(batch, this.heap(12), this.direct(112));
+                    this.checkWriteBatchStats(writeBatch, 3, 60, provider.name);
                     this.batchPut(batch, this.direct(13), this.heap(113));
+                    this.checkWriteBatchStats(writeBatch, 4, 80, provider.name);
                     this.batchPut(batch, this.direct(14), this.direct(114));
+                    this.checkWriteBatchStats(writeBatch, 5, 100, provider.name);
                     this.batchPut(batch, this.composite(15), this.composite(115));
-                    batch.delete(bytes(0));
+                    this.checkWriteBatchStats(writeBatch, 6, 120, provider.name);
+                    checkState(writeBatch.delete(bytes(0)) == batch, provider.name);
+                    this.checkWriteBatchStats(writeBatch, 7, 130, provider.name);
                     this.batchDelete(batch, this.heap(1));
+                    this.checkWriteBatchStats(writeBatch, 8, 140, provider.name);
                     this.batchDelete(batch, this.direct(2));
+                    this.checkWriteBatchStats(writeBatch, 9, 150, provider.name);
                     this.batchDelete(batch, this.composite(3));
 
-                    checkState(batch.size() == 10, provider.name);
-                    checkState(batch.getApproximateSize() == 160, provider.name);
+                    this.checkWriteBatchStats(writeBatch, 10, 160, provider.name);
                     db.write(batch);
                 }
 
@@ -220,6 +229,13 @@ public class ProviderParityTest {
                         this.checkBytes(bytes(130), db.get(bytes(30), new ReadOptions().snapshot(snapshot)));
                         this.checkBytes(bytes(131), db.get(bytes(31), new ReadOptions().snapshot(snapshot)));
                     }
+                }
+
+                WriteBatch closeOnlyBatch = db.createWriteBatch();
+                this.checkWriteBatchStats(closeOnlyBatch, 0, 0, provider.name);
+                closeOnlyBatch.close();
+                if (provider.nativeProvider) {
+                    this.checkThrows(IllegalStateException.class, closeOnlyBatch::size);
                 }
             });
         }
@@ -281,7 +297,13 @@ public class ProviderParityTest {
                     this.checkEntry(iterator.peekPrev(), 16, 1016);
                 }
 
+                db.compactRange(bytes(0), bytes(8));
+                db.compactRange(bytes(8), null);
+                db.compactRange(null, bytes(8));
                 db.compactRange(null, null);
+                this.checkBytes(bytes(2000), db.get(bytes(0)));
+                checkState(db.get(bytes(1)) == null, provider.name);
+                this.checkBytes(bytes(1016), db.get(bytes(16)));
 
                 long[] sizes = db.getApproximateSizes(
                         new Range(bytes(0), bytes(8)),
@@ -329,6 +351,21 @@ public class ProviderParityTest {
                 }
             } else {
                 this.checkThrows(UnsupportedOperationException.class, () -> provider.provider.repair(repairDir, this.options()));
+            }
+        }
+    }
+
+    @Test
+    public void testJavaAndNativeDirectDBCloseMethods() throws Exception {
+        for (ProviderCase provider : this.providers()) {
+            File closeDir = new File(TEST_ROOT, provider.name + "-close");
+            DirectDB db = provider.provider.open(closeDir, this.options());
+            db.put(bytes(0), bytes(100));
+            db.close();
+            db.close();
+
+            try (DirectDB reopened = provider.provider.open(closeDir, this.options())) {
+                this.checkBytes(bytes(100), reopened.get(bytes(0)));
             }
         }
     }
@@ -396,7 +433,7 @@ public class ProviderParityTest {
 
     private void batchPut(@NonNull DirectWriteBatch batch, @NonNull ByteBuf key, @NonNull ByteBuf value) {
         try {
-            batch.put(key, value);
+            checkState(batch.put(key, value) == batch, batch);
         } finally {
             value.release();
             key.release();
@@ -405,10 +442,15 @@ public class ProviderParityTest {
 
     private void batchDelete(@NonNull DirectWriteBatch batch, @NonNull ByteBuf key) {
         try {
-            batch.delete(key);
+            checkState(batch.delete(key) == batch, batch);
         } finally {
             key.release();
         }
+    }
+
+    private void checkWriteBatchStats(@NonNull WriteBatch batch, int size, int approximateSize, @NonNull String provider) {
+        checkState(batch.size() == size, provider);
+        checkState(batch.getApproximateSize() == approximateSize, provider);
     }
 
     private void checkDBValue(@NonNull DirectDB db, int key, int value) {
