@@ -25,9 +25,9 @@ import io.netty.buffer.ByteBufAllocator;
 import lombok.NonNull;
 import lombok.RequiredArgsConstructor;
 import net.daporkchop.ldbjni.direct.DirectWriteBatch;
-import net.daporkchop.lib.unsafe.PCleaner;
 
 import java.io.IOException;
+import java.lang.ref.Cleaner;
 import java.util.concurrent.atomic.AtomicLong;
 
 import static net.daporkchop.lib.common.util.PValidation.*;
@@ -42,7 +42,7 @@ final class NativeWriteBatch implements DirectWriteBatch {
     final AtomicLong ptr;
 
     private final NativeDB db;
-    private final PCleaner cleaner;
+    private final Cleaner.Cleanable cleanable;
 
     private int approximateSize;
     private int size;
@@ -50,7 +50,7 @@ final class NativeWriteBatch implements DirectWriteBatch {
     public NativeWriteBatch(long ptr, @NonNull NativeDB db) {
         this.ptr = new AtomicLong(ptr);
         this.db = db;
-        this.cleaner = PCleaner.cleaner(this, new Releaser(this.ptr, this.db));
+        this.cleanable = NativeDB.CLEANER.register(this, new Releaser(this.ptr, this.db));
     }
 
     @Override
@@ -196,7 +196,7 @@ final class NativeWriteBatch implements DirectWriteBatch {
 
     @Override
     public synchronized void close() throws IOException {
-        this.cleaner.clean();
+        this.cleanable.clean();
     }
 
     @RequiredArgsConstructor

@@ -29,7 +29,6 @@ import net.daporkchop.ldbjni.direct.BufType;
 import net.daporkchop.ldbjni.direct.DirectDB;
 import net.daporkchop.ldbjni.direct.DirectReadOptions;
 import net.daporkchop.ldbjni.direct.DirectWriteBatch;
-import net.daporkchop.lib.unsafe.PCleaner;
 import org.iq80.leveldb.DBException;
 import org.iq80.leveldb.DBIterator;
 import org.iq80.leveldb.Options;
@@ -52,6 +51,7 @@ import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReadWriteLock;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
+import java.lang.ref.Cleaner;
 
 import static net.daporkchop.lib.common.util.PValidation.*;
 
@@ -61,6 +61,7 @@ import static net.daporkchop.lib.common.util.PValidation.*;
 final class NativeDB implements DirectDB {
     private static final ReadOptions DEFAULT_READ_OPTIONS = new ReadOptions();
     private static final WriteOptions DEFAULT_WRITE_OPTIONS = new WriteOptions();
+    static final Cleaner CLEANER = Cleaner.create();
 
     static {
         init();
@@ -80,7 +81,7 @@ final class NativeDB implements DirectDB {
 
     private long db;
     private long dca;
-    private final PCleaner cleaner;
+    private final Cleaner.Cleanable cleanable;
     private final Set<NativeResource> resources = Collections.synchronizedSet(Collections.newSetFromMap(new WeakHashMap<>()));
 
     private final Lock readLock;
@@ -107,7 +108,7 @@ final class NativeDB implements DirectDB {
                 options.cacheSize());
         this.dca = createDecompressAllocator();
 
-        this.cleaner = PCleaner.cleaner(this, new Releaser(this.db, this.dca));
+        this.cleanable = CLEANER.register(this, new Releaser(this.db, this.dca));
 
         ReadWriteLock lock = new ReentrantReadWriteLock();
         this.readLock = lock.readLock();
@@ -329,7 +330,7 @@ final class NativeDB implements DirectDB {
         try {
             if (this.db != 0L) {
                 this.closeResources();
-                this.cleaner.clean();
+                this.cleanable.clean();
                 this.db = this.dca = 0L;
             }
         } finally {
@@ -686,7 +687,7 @@ final class NativeDB implements DirectDB {
         @NonNull
         private final AtomicLong ptr;
         @NonNull
-        private final PCleaner cleaner;
+        private final Cleaner.Cleanable cleanable;
         private Direction direction = Direction.FORWARD;
         private Position position = Position.START;
         private Map.Entry<byte[], byte[]> entry;
@@ -694,7 +695,7 @@ final class NativeDB implements DirectDB {
         public NativeIterator(@NonNull NativeDB db, long ptr) {
             this.db = db;
             this.ptr = new AtomicLong(ptr);
-            this.cleaner = PCleaner.cleaner(this, new IteratorReleaser(this.ptr, this.db));
+            this.cleanable = CLEANER.register(this, new IteratorReleaser(this.ptr, this.db));
             this.db.registerResource(this);
         }
 
@@ -826,7 +827,7 @@ final class NativeDB implements DirectDB {
         public void close() {
             this.db.readLock.lock();
             try {
-                this.cleaner.clean();
+                this.cleanable.clean();
             } finally {
                 this.db.readLock.unlock();
             }
@@ -936,12 +937,12 @@ final class NativeDB implements DirectDB {
         @NonNull
         private final AtomicLong ptr;
         @NonNull
-        private final PCleaner cleaner;
+        private final Cleaner.Cleanable cleanable;
 
         public NativeSnapshot(long ptr, @NonNull NativeDB db) {
             this.db = db;
             this.ptr = new AtomicLong(ptr);
-            this.cleaner = PCleaner.cleaner(this, new SnapshotReleaser(this.ptr, this.db));
+            this.cleanable = CLEANER.register(this, new SnapshotReleaser(this.ptr, this.db));
             this.db.registerResource(this);
         }
 
@@ -949,7 +950,7 @@ final class NativeDB implements DirectDB {
         public void close() {
             this.db.readLock.lock();
             try {
-                this.cleaner.clean();
+                this.cleanable.clean();
             } finally {
                 this.db.readLock.unlock();
             }
