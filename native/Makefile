@@ -61,6 +61,7 @@ $(CURDIR)/lib-leveldb/libleveldb.a: $(TOPDIR)/$(LEVELDB_MCPE_ARCHIVE) $(CURDIR)/
 	@[ -f "$(TOOLCHAINS)/$(BUILD).cmake" ]
 	@cp $(TOPDIR)/leveldb-CMakeLists.txt lib-leveldb/CMakeLists.txt
 	@cd lib-leveldb/ && cmake \
+		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_TOOLCHAIN_FILE="$(TOOLCHAINS)/$(BUILD).cmake" \
 		-DZLIB_LIBRARY="$(CURDIR)/lib-zlib/libz.a" -DZLIB_INCLUDE_DIR="$(CURDIR)/lib-zlib" \
 		-DHAVE_SNAPPY=true -DSNAPPY_DIR="$(CURDIR)/lib-snappy" \
@@ -80,6 +81,7 @@ $(CURDIR)/lib-snappy/libsnappy.a: $(TOPDIR)/$(SNAPPY_ARCHIVE) $(TOOLCHAINS)/$(BU
 	@mv $(SNAPPY_DIR)/ lib-snappy/
 	@[ -f "$(TOOLCHAINS)/$(BUILD).cmake" ]
 	@cd lib-snappy/ && cmake \
+		-DCMAKE_BUILD_TYPE=Release \
 		-DCMAKE_TOOLCHAIN_FILE="$(TOOLCHAINS)/$(BUILD).cmake" \
 		-DSNAPPY_BUILD_TESTS=OFF -DSNAPPY_BUILD_BENCHMARKS=OFF -DSNAPPY_INSTALL=OFF .
 	@$(MAKE) -C $(CURDIR)/lib-snappy/ -f $(CURDIR)/lib-snappy/Makefile
