@@ -25,7 +25,7 @@ plugins {
 ext {
     // General configuration
     javaVersion = JavaVersion.VERSION_11
-    programVersion = '0.0.12-SNAPSHOT'
+    programVersion = '0.0.12'
 
     // Dependency versions
     junitVersion = '4.13.2'
@@ -130,6 +130,15 @@ publishing {
 
 publish.dependsOn(publishToMavenLocal)
 build.dependsOn(publish)
+
+test {
+    // forward benchmark.* tunables from the gradle CLI to the test JVM
+    System.properties.each { key, value ->
+        if (key.startsWith('benchmark.')) {
+            systemProperty key, value
+        }
+    }
+}
 
 if (System.getProperty('os.name').toLowerCase().startsWith('windows')) {
     throw new IllegalStateException("You are running Windows, which is bad and you should feel bad.\nThis means that native libraries cannot be built.")

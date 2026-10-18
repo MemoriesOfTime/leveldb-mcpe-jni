@@ -46,7 +46,7 @@ export MODULES		:=	native
 
 export LEVELDB_MCPE_VERSION		:=	1.22
 export ZLIB_NG_VERSION			:=	2.3.3
-export SNAPPY_VERSION			:=	1.2.2
+export SNAPPY_VERSION			:=	1.3.1
 
 export LEVELDB_MCPE_DIR			:=	leveldb-mcpe-$(LEVELDB_MCPE_VERSION)
 export ZLIB_NG_DIR				:=	zlib-ng-$(ZLIB_NG_VERSION)
